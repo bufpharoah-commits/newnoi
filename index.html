@@ -991,7 +991,7 @@ function clearFilters() {
 function renderTable() {
   const body = document.getElementById('tbl-body');
   const now = today0();
-  const soon = new Date(now); soon.setDate(soon.getDate() + 7);
+  const soon = new Date(now); soon.setDate(soon.getDate());
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   if (page > totalPages) page = totalPages;
