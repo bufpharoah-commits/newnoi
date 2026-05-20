@@ -1131,71 +1131,105 @@ function renderCharts() {
 }
 
 function renderTrend() {
-  // แนวโน้มรายสัปดาห์ย้อนหลัง 8 สัปดาห์ จาก allData ทั้งหมด
-  const WEEKS = 8;
+  // แนวโน้มรายวัน แสดงเฉพาะสัปดาห์ปัจจุบัน (จันทร์ - อาทิตย์)
   const now = today0();
-  // หาต้นสัปดาห์ปัจจุบัน (วันอาทิตย์)
-  const thisWeekStart = startOfWeek(now);
+
+  // หาวันจันทร์ต้นสัปดาห์
+  const dayOfWeek = now.getDay(); // 0=อาทิตย์, 1=จันทร์ ...
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+  const DAY_NAMES = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
   const counts = [];
   const labels = [];
-  for (let i = WEEKS - 1; i >= 0; i--) {
-    const wStart = new Date(thisWeekStart);
-    wStart.setDate(wStart.getDate() - i * 7);
-    const wEnd = new Date(wStart);
-    wEnd.setDate(wEnd.getDate() + 7);
-    const cnt = allData.filter(r => r.dateObj && r.dateObj >= wStart && r.dateObj < wEnd).length;
+  const dayDates = [];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const next = new Date(d);
+    next.setDate(d.getDate() + 1);
+
+    const cnt = allData.filter(r => {
+      if (!r.dateObj) return false;
+      const dn = new Date(r.dateObj); dn.setHours(0,0,0,0);
+      return dn >= d && dn < next;
+    }).length;
+
     counts.push(cnt);
-    // label: วันที่เริ่มต้นสัปดาห์ แบบสั้น
-    const day   = wStart.getDate();
-    const month = wStart.getMonth() + 1;
-    labels.push(`${day}/${month}`);
+    labels.push(DAY_NAMES[i]);
+    dayDates.push(new Date(d));
   }
 
   const maxV = Math.max(...counts, 1);
-  const W = 300, H = 90, padX = 12, padY = 14;
-  const n = counts.length;
-  const pts = counts.map((v, i) => {
-    const x = padX + i * (W - 2 * padX) / (n - 1);
-    const y = H - padY - (v / maxV) * (H - 2 * padY);
-    return { x, y, v };
-  });
+  const maxIdx = counts.indexOf(Math.max(...counts));
+  const todayIdx = (dayOfWeek === 0 ? 6 : dayOfWeek - 1); // index ของวันนี้
+  const W = 300, H = 90, padX = 20, padY = 16;
+  const n = 7;
 
-  const polyPts  = pts.map(p => `${p.x},${p.y}`).join(' ');
-  const areaPts  = [
-    ...pts.map(p => `${p.x},${p.y}`),
-    `${pts[n-1].x},${H - padY}`,
-    `${pts[0].x},${H - padY}`
+  const pts = counts.map((v, i) => ({
+    x: padX + i * (W - 2 * padX) / (n - 1),
+    y: H - padY - (v / maxV) * (H - 2 * padY),
+    v
+  }));
+
+  const polyPts = pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPts = [
+    ...pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+    `${pts[n-1].x.toFixed(1)},${H - padY}`,
+    `${pts[0].x.toFixed(1)},${H - padY}`
   ].join(' ');
 
-  // หาสัปดาห์ที่มากที่สุดเพื่อไฮไลต์
-  const maxIdx = counts.indexOf(Math.max(...counts));
+  // เส้นแบ่งวันแนวตั้ง (grid)
+  const gridLines = pts.map(p =>
+    `<line x1="${p.x.toFixed(1)}" y1="${padY}" x2="${p.x.toFixed(1)}" y2="${H - padY}"
+      stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>`
+  ).join('');
 
   const svg = document.getElementById('trend-svg');
   svg.innerHTML = `
     <defs>
       <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.25"/>
+        <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.2"/>
         <stop offset="100%" stop-color="#1D9E75" stop-opacity="0"/>
       </linearGradient>
     </defs>
+    ${gridLines}
     <polygon points="${areaPts}" fill="url(#tg)"/>
-    <polyline points="${polyPts}" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${polyPts}" fill="none" stroke="#1D9E75" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round"/>
     ${pts.map((p, i) => {
-      const isMax = i === maxIdx;
-      const r = isMax ? 5 : 3.5;
-      const fill = isMax ? '#D85A30' : '#1D9E75';
-      const textY = p.y - 8;
-      const valLabel = p.v > 0 ? `<text x="${p.x}" y="${textY}" text-anchor="middle" font-size="9" font-weight="${isMax?'700':'400'}" fill="${isMax?'#D85A30':'#6b6861'}">${p.v}</text>` : '';
-      return `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}"/>${valLabel}`;
+      const isToday = i === todayIdx;
+      const isMax   = i === maxIdx && p.v > 0;
+      const r    = isToday ? 5 : isMax ? 4.5 : 3.5;
+      const fill = isToday ? '#3b82f6' : isMax ? '#D85A30' : '#1D9E75';
+      const stroke = isToday ? ' stroke="#fff" stroke-width="1.5"' : '';
+      const lbl  = p.v > 0
+        ? `<text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}"
+             text-anchor="middle" font-size="10" font-weight="600"
+             fill="${isToday ? '#3b82f6' : isMax ? '#D85A30' : '#1D9E75'}">${p.v}</text>`
+        : '';
+      // วงกลมไฮไลต์วันนี้
+      const ring = isToday
+        ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9"
+             fill="none" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.3"/>`
+        : '';
+      return `${ring}<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}" fill="${fill}"${stroke}/>${lbl}`;
     }).join('')}`;
 
-  document.getElementById('trend-labels').innerHTML =
-    labels.map((l, i) => {
-      const isMax = i === maxIdx;
-      return `<span style="font-weight:${isMax?'700':'400'};color:${isMax?'#D85A30':'var(--text3)'}">${l}</span>`;
-    }).join('');
+  // Label วันและวันที่
+  document.getElementById('trend-labels').innerHTML = labels.map((l, i) => {
+    const isToday = i === todayIdx;
+    const isMax   = i === maxIdx && counts[i] > 0;
+    const d = dayDates[i];
+    const dateStr = `${d.getDate()}/${d.getMonth()+1}`;
+    const color = isToday ? '#3b82f6' : isMax ? '#D85A30' : 'var(--text3)';
+    return `<span style="display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0">
+      <span style="font-size:11px;font-weight:${isToday?'700':'500'};color:${color}">${l}</span>
+      <span style="font-size:9px;color:${color};opacity:0.8">${dateStr}</span>
+    </span>`;
+  }).join('');
 }
-
 function exportCSV() {
   if (!filtered.length) { showToast('ไม่มีข้อมูลให้ส่งออก'); return; }
   const header = ['วันที่','เลขพัสดุ','บริษัท','สถานะ','ชั้นวาง','วันหมดอายุ','สาเหตุ'];
