@@ -114,7 +114,17 @@
   .stat-card.red::before { background: #ef4444; }
   .stat-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
   .stat-icon { font-size: 14px; }
-  .stat-val { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
+  .stat-val {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    transition: all 0.25s;
+  }
+  .stat-val.flash {
+    transform: scale(1.08);
+    opacity: 0.7;
+  }
   .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
 
   /* CONTROLS */
@@ -542,36 +552,21 @@
 <main class="container">
 
   <!-- STATS -->
-  <div class="stats-grid">
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);max-width:640px">
     <div class="stat-card green">
-      <div class="stat-label"><span class="stat-icon">📅</span>นำเข้าวันนี้</div>
-      <div class="stat-val" id="s-today">—</div>
-      <div class="stat-sub">พัสดุที่รับเข้าวันนี้</div>
-    </div>
-    <div class="stat-card blue">
-      <div class="stat-label"><span class="stat-icon">📊</span>สัปดาห์นี้</div>
-      <div class="stat-val" id="s-week">—</div>
-      <div class="stat-sub">7 วันล่าสุด</div>
-    </div>
-    <div class="stat-card amber">
-      <div class="stat-label"><span class="stat-icon">🗓️</span>เดือนนี้</div>
-      <div class="stat-val" id="s-month">—</div>
-      <div class="stat-sub">รวมนำเข้าทั้งเดือน</div>
+      <div class="stat-label"><span class="stat-icon">📦</span>จำนวนพัสดุ</div>
+      <div class="stat-val" id="s-total">—</div>
+      <div class="stat-sub" id="s-total-sub">รายการ</div>
     </div>
     <div class="stat-card blue">
       <div class="stat-label"><span class="stat-icon">🏢</span>บริษัทขนส่ง</div>
       <div class="stat-val" id="s-companies">—</div>
-      <div class="stat-sub">ที่มีพัสดุนำเข้า</div>
+      <div class="stat-sub" id="s-companies-sub">บริษัท</div>
     </div>
     <div class="stat-card red">
-      <div class="stat-label"><span class="stat-icon">⚠️</span>ใกล้หมดอายุ</div>
-      <div class="stat-val" id="s-expiring">—</div>
-      <div class="stat-sub">ภายใน 7 วัน</div>
-    </div>
-    <div class="stat-card red">
-      <div class="stat-label"><span class="stat-icon">❌</span>มีปัญหา</div>
+      <div class="stat-label"><span class="stat-icon">⚠️</span>มีปัญหา</div>
       <div class="stat-val" id="s-issues">—</div>
-      <div class="stat-sub">มีสาเหตุบันทึกไว้</div>
+      <div class="stat-sub" id="s-issues-sub">รายการ</div>
     </div>
   </div>
 
@@ -613,9 +608,9 @@
   </div>
 
   <!-- CHARTS -->
-  <div class="charts-row" id="charts-section" style="display:none">
+  <div class="charts-row" id="charts-section" style="display:none;grid-template-columns:1fr 1fr 1fr">
     <div class="chart-card">
-      <div class="chart-title">📦 พัสดุตามบริษัทขนส่ง</div>
+      <div class="chart-title">🏢 พัสดุแยกตามบริษัทขนส่ง</div>
       <div class="bar-list" id="chart-company"></div>
     </div>
     <div class="chart-card">
@@ -623,9 +618,9 @@
       <div class="bar-list" id="chart-reason"></div>
     </div>
     <div class="chart-card">
-      <div class="chart-title">📈 แนวโน้ม 7 วัน</div>
-      <div class="trend-chart">
-        <svg class="trend-svg" id="trend-svg" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+      <div class="chart-title">📈 แนวโน้มรายสัปดาห์ (8 สัปดาห์)</div>
+      <div class="trend-chart" style="height:110px">
+        <svg class="trend-svg" id="trend-svg" viewBox="0 0 300 100" preserveAspectRatio="none" style="height:110px"></svg>
       </div>
       <div id="trend-labels" style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--text3)"></div>
     </div>
@@ -871,30 +866,31 @@ function populateFilters() {
 }
 
 function updateStats() {
-  const now = today0();
-  const wk = startOfWeek(now);
-  const mo = new Date(now.getFullYear(), now.getMonth(), 1);
-  const next7 = new Date(now); next7.setDate(next7.getDate() + 7);
-  let td=0, wkc=0, mo_c=0, exp7=0, issues=0;
+  // ตอนโหลดครั้งแรก แสดงยอดรวมทั้งหมด (allData)
+  updateStatsFromData(allData, 'ทั้งหมด');
+}
+
+function updateStatsFromData(data, periodLabel) {
   const companies = new Set();
-  allData.forEach(r => {
-    const d = r.dateObj;
-    if (d) {
-      const dn = new Date(d); dn.setHours(0,0,0,0);
-      if (dn.getTime() === now.getTime()) td++;
-      if (dn >= wk) wkc++;
-      if (dn >= mo) mo_c++;
-    }
+  let issues = 0;
+  data.forEach(r => {
     if (r.company) companies.add(r.company);
-    if (r.expObj) { const e=new Date(r.expObj); e.setHours(0,0,0,0); if(e>=now&&e<=next7) exp7++; }
     if (r.reason) issues++;
   });
-  document.getElementById('s-today').textContent = td.toLocaleString();
-  document.getElementById('s-week').textContent = wkc.toLocaleString();
-  document.getElementById('s-month').textContent = mo_c.toLocaleString();
-  document.getElementById('s-companies').textContent = companies.size.toLocaleString();
-  document.getElementById('s-expiring').textContent = exp7.toLocaleString();
-  document.getElementById('s-issues').textContent = issues.toLocaleString();
+
+  function setVal(id, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('flash');
+    setTimeout(() => { el.textContent = val; el.classList.remove('flash'); }, 120);
+  }
+
+  setVal('s-total', data.length.toLocaleString());
+  setVal('s-companies', companies.size.toLocaleString());
+  setVal('s-issues', issues.toLocaleString());
+  document.getElementById('s-total-sub').textContent = periodLabel;
+  document.getElementById('s-companies-sub').textContent = 'บริษัท · ' + periodLabel;
+  document.getElementById('s-issues-sub').textContent = 'รายการ · ' + periodLabel;
 }
 
 function setPeriod(p, el) {
@@ -935,9 +931,24 @@ function applyFilters() {
     return true;
   });
 
+  // label สำหรับ Stats Cards
+  let periodLabel = 'ทั้งหมด';
+  if (currentPeriod === 'today') periodLabel = 'วันนี้';
+  else if (currentPeriod === 'week') periodLabel = 'สัปดาห์นี้';
+  else if (currentPeriod === 'month') periodLabel = 'เดือนนี้';
+  else if (dfromVal && dtoVal) periodLabel = dfromVal + ' – ' + dtoVal;
+  else if (dfromVal) periodLabel = 'ตั้งแต่ ' + dfromVal;
+  else if (dtoVal) periodLabel = 'ถึง ' + dtoVal;
+  if (company) periodLabel += ' · ' + company;
+  if (reason) periodLabel += ' · ' + reason;
+  if (search) periodLabel += ' · "' + search + '"';
+
+  updateStatsFromData(filtered, periodLabel);
+
   sortFiltered();
   page = 1;
   renderTable();
+  renderCharts();
 }
 
 function sortBy(key) {
@@ -1094,68 +1105,95 @@ function renderCharts() {
     if (r.reason)  reasonMap[r.reason]  = (reasonMap[r.reason]||0) + 1;
   });
 
-  const compArr = Object.entries(compMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
-  const reasonArr = Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const maxC = compArr[0]?compArr[0][1]:1;
-  const maxR = reasonArr[0]?reasonArr[0][1]:1;
-
+  // กราฟบริษัทขนส่ง
+  const compArr = Object.entries(compMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxC = compArr[0] ? compArr[0][1] : 1;
   document.getElementById('chart-company').innerHTML = compArr.length ?
     compArr.map(([n,c],i)=>`<div class="bar-row">
-      <span class="bar-name" title="${n}">${n}</span>
+      <span class="bar-name" title="${n}" style="width:80px">${n}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c/maxC*100)}%;background:${COLORS_COMPANY[i%COLORS_COMPANY.length]}"></div></div>
       <span class="bar-count">${c}</span>
-    </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:1rem 0">ไม่มีข้อมูล</div>';
+    </div>`).join('')
+    : '<div style="font-size:12px;color:var(--text3);padding:0.75rem 0">ไม่มีข้อมูล</div>';
 
+  // กราฟสาเหตุปัญหา
+  const reasonArr = Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxR = reasonArr[0] ? reasonArr[0][1] : 1;
   document.getElementById('chart-reason').innerHTML = reasonArr.length ?
     reasonArr.map(([n,c],i)=>`<div class="bar-row">
-      <span class="bar-name" title="${n}" style="width:90px">${n}</span>
+      <span class="bar-name" title="${n}" style="width:110px">${n}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c/maxR*100)}%;background:${COLORS_REASON[i%COLORS_REASON.length]}"></div></div>
       <span class="bar-count">${c}</span>
-    </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:1rem 0">ไม่มีข้อมูล</div>';
+    </div>`).join('')
+    : '<div style="font-size:12px;color:var(--text3);padding:0.75rem 0">ไม่มีข้อมูล</div>';
 
   renderTrend();
 }
 
 function renderTrend() {
-  const days = 7;
+  // แนวโน้มรายสัปดาห์ย้อนหลัง 8 สัปดาห์ จาก allData ทั้งหมด
+  const WEEKS = 8;
   const now = today0();
+  // หาต้นสัปดาห์ปัจจุบัน (วันอาทิตย์)
+  const thisWeekStart = startOfWeek(now);
   const counts = [];
   const labels = [];
-  for (let i=days-1;i>=0;i--) {
-    const d = new Date(now); d.setDate(d.getDate()-i);
-    const next = new Date(d); next.setDate(next.getDate()+1);
-    const cnt = allData.filter(r => r.dateObj && r.dateObj >= d && r.dateObj < next).length;
+  for (let i = WEEKS - 1; i >= 0; i--) {
+    const wStart = new Date(thisWeekStart);
+    wStart.setDate(wStart.getDate() - i * 7);
+    const wEnd = new Date(wStart);
+    wEnd.setDate(wEnd.getDate() + 7);
+    const cnt = allData.filter(r => r.dateObj && r.dateObj >= wStart && r.dateObj < wEnd).length;
     counts.push(cnt);
-    labels.push(d.toLocaleDateString('th-TH',{weekday:'short'}));
+    // label: วันที่เริ่มต้นสัปดาห์ แบบสั้น
+    const day   = wStart.getDate();
+    const month = wStart.getMonth() + 1;
+    labels.push(`${day}/${month}`);
   }
+
   const maxV = Math.max(...counts, 1);
-  const W=300, H=70, pad=10;
-  const pts = counts.map((v,i) => {
-    const x = pad + i*(W-2*pad)/(days-1);
-    const y = H - pad - (v/maxV)*(H-2*pad);
-    return `${x},${y}`;
+  const W = 300, H = 90, padX = 12, padY = 14;
+  const n = counts.length;
+  const pts = counts.map((v, i) => {
+    const x = padX + i * (W - 2 * padX) / (n - 1);
+    const y = H - padY - (v / maxV) * (H - 2 * padY);
+    return { x, y, v };
   });
-  const areaBottom = counts.map((v,i) => {
-    const x = pad + i*(W-2*pad)/(days-1);
-    return `${x},${H-pad}`;
-  }).reverse();
+
+  const polyPts  = pts.map(p => `${p.x},${p.y}`).join(' ');
+  const areaPts  = [
+    ...pts.map(p => `${p.x},${p.y}`),
+    `${pts[n-1].x},${H - padY}`,
+    `${pts[0].x},${H - padY}`
+  ].join(' ');
+
+  // หาสัปดาห์ที่มากที่สุดเพื่อไฮไลต์
+  const maxIdx = counts.indexOf(Math.max(...counts));
+
   const svg = document.getElementById('trend-svg');
   svg.innerHTML = `
     <defs>
       <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.3"/>
+        <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.25"/>
         <stop offset="100%" stop-color="#1D9E75" stop-opacity="0"/>
       </linearGradient>
     </defs>
-    <polygon points="${pts.join(' ')} ${areaBottom.join(' ')}" fill="url(#tg)"/>
-    <polyline points="${pts.join(' ')}" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    ${counts.map((v,i)=>{
-      const x=pad+i*(W-2*pad)/(days-1);
-      const y=H-pad-(v/maxV)*(H-2*pad);
-      return `<circle cx="${x}" cy="${y}" r="3.5" fill="#1D9E75"/>
-              <text x="${x}" y="${y-7}" text-anchor="middle" font-size="9" fill="#6b6861">${v}</text>`;
+    <polygon points="${areaPts}" fill="url(#tg)"/>
+    <polyline points="${polyPts}" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${pts.map((p, i) => {
+      const isMax = i === maxIdx;
+      const r = isMax ? 5 : 3.5;
+      const fill = isMax ? '#D85A30' : '#1D9E75';
+      const textY = p.y - 8;
+      const valLabel = p.v > 0 ? `<text x="${p.x}" y="${textY}" text-anchor="middle" font-size="9" font-weight="${isMax?'700':'400'}" fill="${isMax?'#D85A30':'#6b6861'}">${p.v}</text>` : '';
+      return `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}"/>${valLabel}`;
     }).join('')}`;
-  document.getElementById('trend-labels').innerHTML = labels.map(l=>`<span>${l}</span>`).join('');
+
+  document.getElementById('trend-labels').innerHTML =
+    labels.map((l, i) => {
+      const isMax = i === maxIdx;
+      return `<span style="font-weight:${isMax?'700':'400'};color:${isMax?'#D85A30':'var(--text3)'}">${l}</span>`;
+    }).join('');
 }
 
 function exportCSV() {
