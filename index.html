@@ -255,49 +255,31 @@ tbody tr:hover td{background:#fafaf8}
     </div>
   </div>
 
-  <!-- CHARTS: ทั้ง 4 การ์ดในแถวเดียว -->
+  <!-- CHARTS -->
   <div id="charts-section" style="display:none;margin-bottom:1.25rem">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
 
-      <!-- 1: บริษัท ทั้งหมด -->
+      <!-- บริษัท ตาม filter + donut -->
       <div class="chart-card">
         <div class="chart-head">
-          <div class="chart-title" style="font-size:12px">🏢 บริษัท <span style="font-size:9px;color:var(--accent)">(ทั้งหมด)</span></div>
-          <span id="chart-all-co-label" style="font-size:10px;color:var(--text3)"></span>
+          <div class="chart-title">🏢 พัสดุแยกตามบริษัทขนส่ง</div>
+          <span id="chart-co-label" style="font-size:11px;color:var(--text3)"></span>
         </div>
-        <div class="bar-list" id="chart-all-company"></div>
-      </div>
-
-      <!-- 2: สาเหตุ ทั้งหมด -->
-      <div class="chart-card">
-        <div class="chart-head">
-          <div class="chart-title" style="font-size:12px">⚠️ สาเหตุ <span style="font-size:9px;color:var(--accent)">(ทั้งหมด)</span></div>
-          <span id="chart-all-re-label" style="font-size:10px;color:var(--text3)"></span>
-        </div>
-        <div class="bar-list" id="chart-all-reason"></div>
-      </div>
-
-      <!-- 3: บริษัท ตาม filter + donut -->
-      <div class="chart-card">
-        <div class="chart-head">
-          <div class="chart-title" style="font-size:12px">🏢 บริษัท <span style="font-size:9px;color:var(--text3)">(filter)</span></div>
-          <span id="chart-co-label" style="font-size:10px;color:var(--text3)"></span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="display:flex;gap:10px;align-items:flex-start">
           <div class="bar-list" id="chart-company" style="flex:1;min-width:0"></div>
-          <svg id="donut-company" viewBox="0 0 72 72" style="width:60px;height:60px;flex-shrink:0;margin-top:2px"></svg>
+          <svg id="donut-company" viewBox="0 0 72 72" style="width:68px;height:68px;flex-shrink:0;margin-top:2px"></svg>
         </div>
       </div>
 
-      <!-- 4: สาเหตุ ตาม filter + donut -->
+      <!-- สาเหตุ ตาม filter + donut -->
       <div class="chart-card">
         <div class="chart-head">
-          <div class="chart-title" id="chart-reason-title" style="font-size:12px">⚠️ สาเหตุ <span style="font-size:9px;color:var(--text3)">(filter)</span></div>
-          <span id="chart-re-label" style="font-size:10px;color:var(--text3)"></span>
+          <div class="chart-title" id="chart-reason-title">⚠️ สาเหตุปัญหาพัสดุ</div>
+          <span id="chart-re-label" style="font-size:11px;color:var(--text3)"></span>
         </div>
-        <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="display:flex;gap:10px;align-items:flex-start">
           <div class="bar-list" id="chart-reason" style="flex:1;min-width:0"></div>
-          <svg id="donut-reason" viewBox="0 0 72 72" style="width:60px;height:60px;flex-shrink:0;margin-top:2px"></svg>
+          <svg id="donut-reason" viewBox="0 0 72 72" style="width:68px;height:68px;flex-shrink:0;margin-top:2px"></svg>
         </div>
       </div>
 
@@ -685,48 +667,7 @@ function var_text3(){return'#9c9890'}
 // ============================================================
 // CHARTS — ทุกอย่างใช้ filtered เดียวกัน
 // ============================================================
-function renderCharts(){renderAllDataCharts();renderBarCharts()}
-
-// กราฟข้อมูลทั้งหมด (allData) — ไม่ขึ้นกับ filter
-function renderAllDataCharts(){
-  // บริษัท ทั้งหมด
-  const coMap={};
-  allData.forEach(r=>{if(r.company)coMap[r.company]=(coMap[r.company]||0)+1});
-  const coArr=Object.entries(coMap).sort((a,b)=>b[1]-a[1]);
-  const maxCo=coArr[0]?coArr[0][1]:1;
-  const coTotal=allData.length;
-  document.getElementById('chart-all-co-label').textContent='ทั้งหมด '+coTotal.toLocaleString()+' รายการ';
-  document.getElementById('chart-all-company').innerHTML=coArr.length?
-    coArr.map(([n,c],i)=>{
-      const pct=coTotal>0?Math.round(c/coTotal*100):0;
-      return`<div class="bar-row" style="margin-bottom:2px;cursor:pointer" onclick="clickCompanyBar('${n}')" title="${n}: ${c} รายการ (${pct}%)">
-        <span class="bar-name" title="${n}" style="width:72px;font-size:11px">${n}</span>
-        <div class="bar-track" style="height:13px">
-          <div class="bar-fill" style="width:${Math.round(c/maxCo*100)}%;background:${COLORS_CO[i%COLORS_CO.length]};height:100%"></div>
-        </div>
-        <span class="bar-count" style="font-size:11px;min-width:52px;text-align:right">${c} <span style="font-size:9px;color:var(--text3)">${pct}%</span></span>
-      </div>`;
-    }).join(''):'<div style="font-size:11px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
-
-  // สาเหตุปัญหา ทั้งหมด
-  const reMap={};
-  allData.forEach(r=>{if(r.reason)reMap[r.reason]=(reMap[r.reason]||0)+1});
-  const reArr=Object.entries(reMap).sort((a,b)=>b[1]-a[1]);
-  const maxRe=reArr[0]?reArr[0][1]:1;
-  const reTotal=reArr.reduce((s,[,c])=>s+c,0);
-  document.getElementById('chart-all-re-label').textContent='ทั้งหมด '+reTotal.toLocaleString()+' รายการ';
-  document.getElementById('chart-all-reason').innerHTML=reArr.length?
-    reArr.map(([n,c],i)=>{
-      const pct=reTotal>0?Math.round(c/reTotal*100):0;
-      return`<div class="bar-row" style="margin-bottom:2px">
-        <span class="bar-name" title="${n}" style="width:86px;font-size:11px">${n}</span>
-        <div class="bar-track" style="height:13px">
-          <div class="bar-fill" style="width:${Math.round(c/maxRe*100)}%;background:${COLORS_RE[i%COLORS_RE.length]};height:100%"></div>
-        </div>
-        <span class="bar-count" style="font-size:11px;min-width:52px;text-align:right">${c} <span style="font-size:9px;color:var(--text3)">${pct}%</span></span>
-      </div>`;
-    }).join(''):'<div style="font-size:11px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
-}
+function renderCharts(){renderBarCharts()}
 
 // วาด Donut chart ใน SVG element
 function drawDonut(svgId,data,colors){
@@ -767,16 +708,16 @@ function renderBarCharts(){
     compArr.map(([n,c],i)=>{
       const sel=co===n;
       const pct=total>0?Math.round(c/total*100):0;
-      return`<div class="bar-row" style="cursor:pointer;margin-bottom:2px" onclick="clickCompanyBar('${n}')" title="${n}: ${c} (${pct}%)">
-        <span class="bar-name" title="${n}" style="width:72px;font-size:11px;font-weight:${sel?700:400};color:${sel?'var(--accent)':'var(--text2)'}">${n}</span>
-        <div class="bar-track" style="height:13px">
+      return`<div class="bar-row" style="cursor:pointer;margin-bottom:3px" onclick="clickCompanyBar('${n}')" title="${n}: ${c} (${pct}%)">
+        <span class="bar-name" title="${n}" style="width:85px;font-weight:${sel?700:400};color:${sel?'var(--accent)':'var(--text2)'}">${n}</span>
+        <div class="bar-track" style="height:16px">
           <div class="bar-fill" style="width:${Math.round(c/maxC*100)}%;background:${sel?'var(--accent)':COLORS_CO[i%COLORS_CO.length]};height:100%"></div>
         </div>
-        <span class="bar-count" style="font-size:11px;font-weight:${sel?700:400};min-width:52px;text-align:right">
-          ${c} <span style="font-size:9px;color:var(--text3);font-weight:400">${pct}%</span>
+        <span class="bar-count" style="font-weight:${sel?700:400};min-width:58px;text-align:right">
+          ${c} <span style="font-size:10px;color:var(--text3);font-weight:400">${pct}%</span>
         </span>
       </div>`;
-    }).join(''):'<div style="font-size:11px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
+    }).join(''):'<div style="font-size:12px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
   drawDonut('donut-company',compArr,COLORS_CO);
 
   // ---- กราฟแท่งสาเหตุ (กรองตามบริษัทที่เลือก) ----
@@ -786,21 +727,21 @@ function renderBarCharts(){
   const reArr=Object.entries(reMap).sort((a,b)=>b[1]-a[1]).slice(0,12);
   const maxR=reArr[0]?reArr[0][1]:1;
   const rTotal=reArr.reduce((s,[,c])=>s+c,0);
-  document.getElementById('chart-reason-title').textContent=co?`⚠️ สาเหตุ · ${co} (filter)`:'⚠️ สาเหตุ (filter)';
+  document.getElementById('chart-reason-title').textContent=co?`⚠️ สาเหตุปัญหา · ${co}`:'⚠️ สาเหตุปัญหาพัสดุ';
   document.getElementById('chart-re-label').textContent=rTotal>0?'ทั้งหมด '+rTotal.toLocaleString()+' รายการ':'';
   document.getElementById('chart-reason').innerHTML=reArr.length?
     reArr.map(([n,c],i)=>{
       const pct=rTotal>0?Math.round(c/rTotal*100):0;
-      return`<div class="bar-row" style="margin-bottom:2px">
-        <span class="bar-name" title="${n}" style="width:86px;font-size:11px">${n}</span>
-        <div class="bar-track" style="height:13px">
+      return`<div class="bar-row" style="margin-bottom:3px">
+        <span class="bar-name" title="${n}" style="width:100px">${n}</span>
+        <div class="bar-track" style="height:16px">
           <div class="bar-fill" style="width:${Math.round(c/maxR*100)}%;background:${COLORS_RE[i%COLORS_RE.length]};height:100%"></div>
         </div>
-        <span class="bar-count" style="font-size:11px;min-width:52px;text-align:right">
-          ${c} <span style="font-size:9px;color:var(--text3);font-weight:400">${pct}%</span>
+        <span class="bar-count" style="min-width:58px;text-align:right">
+          ${c} <span style="font-size:10px;color:var(--text3);font-weight:400">${pct}%</span>
         </span>
       </div>`;
-    }).join(''):'<div style="font-size:11px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
+    }).join(''):'<div style="font-size:12px;color:var(--text3);padding:0.5rem 0">ไม่มีข้อมูล</div>';
   drawDonut('donut-reason',reArr,COLORS_RE);
 }
 
