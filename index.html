@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>📦 ติดตามของไม่มีข้อมูล (น้องนิว)</title>
+<title>📦 ระบบติดตามพัสดุ</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -171,7 +171,7 @@ tbody tr:hover td{background:#fafaf8}
 <header class="topbar">
   <div class="topbar-left">
     <span class="topbar-logo">📦</span>
-    <span class="topbar-title">ติดตามของไม่มีข้อมูล (น้องนิว)</span>
+    <span class="topbar-title">ระบบติดตามพัสดุ</span>
     <span class="topbar-sub">Parcel Dashboard</span>
   </div>
   <div class="topbar-right">
@@ -184,8 +184,8 @@ tbody tr:hover td{background:#fafaf8}
 
 <main class="container">
 
-  <!-- STATS: 3 cards -->
-  <div class="stats-grid">
+  <!-- STATS: 3 cards — 2 บน + แนวโน้มเต็มแถว -->
+  <div class="stats-grid" style="grid-template-columns:1fr 1fr;grid-template-rows:auto auto">
 
     <!-- Card 1: จำนวนพัสดุ -->
     <div class="stat-card green">
@@ -201,10 +201,16 @@ tbody tr:hover td{background:#fafaf8}
       <div class="stat-sub" id="s-companies-sub">บริษัท</div>
     </div>
 
-    <!-- Card 3: แนวโน้ม (ตัวเลข + sparkline ตาม filter เดียวกัน) -->
-    <div class="stat-card teal">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="stat-label" style="margin:0">📈 แนวโน้ม</div>
+    <!-- Card 3: แนวโน้ม 7 ช่อง -->
+    <div class="stat-card teal" style="grid-column:1/-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="stat-label" style="margin:0">📈 แนวโน้ม</div>
+          <div style="display:flex;align-items:baseline;gap:6px">
+            <span class="stat-val" id="s-trend-cur" style="font-size:22px">—</span>
+            <span class="stat-sub" id="s-trend-sub" style="font-size:12px">ช่วงนี้</span>
+          </div>
+        </div>
         <div class="mini-tabs">
           <button class="mini-tab active" onclick="setSparkMode('day',this)">วัน</button>
           <button class="mini-tab" onclick="setSparkMode('week',this)">สัปดาห์</button>
@@ -212,14 +218,9 @@ tbody tr:hover td{background:#fafaf8}
           <button class="mini-tab" onclick="setSparkMode('year',this)">ปี</button>
         </div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:10px">
-        <div style="flex-shrink:0">
-          <div class="stat-val" id="s-trend-cur">—</div>
-          <div class="stat-sub" id="s-trend-sub">ช่วงนี้</div>
-        </div>
-        <svg id="sparkline" viewBox="0 0 120 36" preserveAspectRatio="none"
-          style="flex:1;height:40px;display:block"></svg>
-      </div>
+      <!-- 7 ช่อง bar chart -->
+      <div id="spark-bars" style="display:flex;align-items:flex-end;gap:6px;height:70px;padding:0 4px"></div>
+      <div id="spark-labels" style="display:flex;gap:6px;margin-top:5px;padding:0 4px"></div>
     </div>
 
   </div>
@@ -254,9 +255,7 @@ tbody tr:hover td{background:#fafaf8}
 
   <!-- CHARTS -->
   <div id="charts-section" style="display:none">
-
-    <!-- Row 1: bar charts + donut -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.25rem">
 
       <!-- บริษัทขนส่ง: bar + donut -->
       <div class="chart-card">
@@ -283,6 +282,7 @@ tbody tr:hover td{background:#fafaf8}
       </div>
 
     </div>
+  </div>
 
   <!-- TABLE -->
   <div class="table-card">
@@ -361,7 +361,7 @@ const COLORS_RE = ['#ef4444','#f97316','#eab308','#8b5cf6','#06b6d4','#84cc16'];
 let allData=[], filtered=[];
 let page=1; const PER=25;
 let period='all', sortKey='date', sortDir=-1;
-let sparkMode='day', trendMode='day';
+let sparkMode='day';
 
 // ============================================================
 // DATA LOAD
@@ -616,36 +616,50 @@ function getSlots(mode,srcData,now){
 
 function renderSparkline(){
   const now=today0();
-  const {counts}=getSlots(sparkMode,filtered,now);
+  const {counts, labels}=getSlots(sparkMode, filtered, now);
   const cur=counts[counts.length-1];
   const prev=counts[counts.length-2]||0;
   const diff=cur-prev;
   const arrow=diff>0?'▲':diff<0?'▼':'—';
-  const col=diff>0?'#22c55e':diff<0?'#ef4444':var_text3();
-  setVal('s-trend-cur',cur.toLocaleString());
-  const sub=sparkMode==='day'?'วันนี้':sparkMode==='week'?'สัปดาห์นี้':sparkMode==='month'?'เดือนนี้':'ปีนี้';
-  document.getElementById('s-trend-sub').innerHTML=`${sub} <span style="color:${col};font-weight:600">${arrow}${Math.abs(diff)}</span>`;
+  const col=diff>0?'#22c55e':diff<0?'#ef4444':'#9c9890';
+  setVal('s-trend-cur', cur.toLocaleString());
+  const subLabel=sparkMode==='day'?'วันนี้':sparkMode==='week'?'สัปดาห์นี้':sparkMode==='month'?'เดือนนี้':'ปีนี้';
+  document.getElementById('s-trend-sub').innerHTML=
+    `${subLabel} <span style="color:${col};font-weight:700;font-size:13px">${arrow}${Math.abs(diff)}</span>`;
 
-  // draw sparkline
-  const W=120,H=36,px=2,py=6,n=counts.length;
   const maxV=Math.max(...counts,1);
-  const pts=counts.map((v,i)=>({
-    x:px+i*(W-2*px)/(n-1),
-    y:H-py-(v/maxV)*(H-2*py)
-  }));
-  const poly=pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area=[...pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`),`${pts[n-1].x.toFixed(1)},${H-py}`,`${pts[0].x.toFixed(1)},${H-py}`].join(' ');
-  const last=pts[n-1];
-  document.getElementById('sparkline').innerHTML=`
-    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#1D9E75" stop-opacity="0"/>
-    </linearGradient></defs>
-    <polygon points="${area}" fill="url(#sg)"/>
-    <polyline points="${poly}" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="#1D9E75"/>`;
+  const maxIdx=counts.indexOf(Math.max(...counts));
+  const curIdx=counts.length-1;
+
+  // วาด bar chart 7 ช่อง
+  const barsEl=document.getElementById('spark-bars');
+  const labelsEl=document.getElementById('spark-labels');
+  if(!barsEl||!labelsEl) return;
+
+  barsEl.innerHTML=counts.map((v,i)=>{
+    const pct=Math.round(v/maxV*100);
+    const isCur=i===curIdx;
+    const isMax=i===maxIdx&&!isCur&&v>0;
+    const bg=isCur?'#3b82f6':isMax?'#D85A30':'#1D9E75';
+    const opacity=v===0?0.15:isCur||isMax?1:0.65;
+    return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px">
+      ${v>0?`<span style="font-size:10px;font-weight:700;color:${bg};line-height:1">${v}</span>`:''}
+      <div style="width:100%;background:${bg};opacity:${opacity};border-radius:4px 4px 2px 2px;height:${Math.max(pct,v>0?4:0)}%;min-height:${v>0?'4px':'2px'};transition:height 0.3s"></div>
+    </div>`;
+  }).join('');
+
+  labelsEl.innerHTML=labels.map((l,i)=>{
+    const isCur=i===curIdx;
+    const isMax=i===maxIdx&&counts[i]>0&&!isCur;
+    const col2=isCur?'#3b82f6':isMax?'#D85A30':'var(--text3)';
+    const parts=l.split('\n');
+    return`<div style="flex:1;text-align:center;min-width:0">
+      <div style="font-size:10px;font-weight:${isCur||isMax?700:500};color:${col2};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${parts[0]}</div>
+      ${parts[1]?`<div style="font-size:8px;color:${col2};opacity:0.75;line-height:1">${parts[1]}</div>`:''}
+    </div>`;
+  }).join('');
 }
-function var_text3(){return getComputedStyle(document.documentElement).getPropertyValue('--text3').trim()||'#9c9890'}
+function var_text3(){return'#9c9890'}
 
 // ============================================================
 // CHARTS — ทุกอย่างใช้ filtered เดียวกัน
@@ -725,68 +739,6 @@ function clickCompanyBar(name){
   const cf=document.getElementById('company-filter');
   cf.value=cf.value===name?'':name;
   onCompanyChange();
-}
-
-function setTrendMode(mode,el){
-  trendMode=mode;
-  document.querySelectorAll('#trend-tabs .mini-tab').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-  renderTrendChart();
-}
-
-function renderTrendChart(){
-  // ใช้ filtered เดียวกับ filter ทั้งหมด
-  const now=today0();
-  const{counts,labels}=getSlots(trendMode,filtered,now);
-
-  // แสดง label ว่า filter อะไรอยู่
-  const co=document.getElementById('company-filter').value;
-  const re=document.getElementById('reason-filter').value;
-  const lparts=[];
-  if(co)lparts.push(co);
-  if(re)lparts.push(re);
-  document.getElementById('trend-filter-label').textContent=lparts.length?'· '+lparts.join(' · '):'(ข้อมูลทั้งหมด)';
-
-  const maxV=Math.max(...counts,1);
-  const maxIdx=counts.indexOf(Math.max(...counts));
-  const curIdx=6;
-  const W=600,H=100,px=30,py=18,n=7;
-  const pts=counts.map((v,i)=>({
-    x:px+i*(W-2*px)/(n-1),
-    y:H-py-(v/maxV)*(H-2*py),v
-  }));
-  const poly=pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area=[...pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`),
-    `${pts[n-1].x.toFixed(1)},${H-py}`,`${pts[0].x.toFixed(1)},${H-py}`].join(' ');
-  const grid=pts.map(p=>`<line x1="${p.x.toFixed(1)}" y1="${py-4}" x2="${p.x.toFixed(1)}" y2="${H-py}" stroke="rgba(0,0,0,0.05)" stroke-width="1" stroke-dasharray="3,4"/>`).join('');
-
-  document.getElementById('trend-svg').innerHTML=`
-    <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#1D9E75" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#1D9E75" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${grid}
-    <polygon points="${area}" fill="url(#tg)"/>
-    <polyline points="${poly}" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-    ${pts.map((p,i)=>{
-      const isCur=i===curIdx,isMax=i===maxIdx&&p.v>0&&!isCur;
-      const r=isCur?6:isMax?5:3.5;
-      const fill=isCur?'#3b82f6':isMax?'#D85A30':'#1D9E75';
-      const strk=isCur?' stroke="#fff" stroke-width="2"':'';
-      const ring=isCur?`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="10" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.2"/>`:'' ;
-      const lbl=p.v>0?`<text x="${p.x.toFixed(1)}" y="${(p.y-10).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${fill}">${p.v}</text>`:'';
-      return`${ring}<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}" fill="${fill}"${strk}/>${lbl}`;
-    }).join('')}`;
-
-  document.getElementById('trend-labels').innerHTML=labels.map((l,i)=>{
-    const isCur=i===curIdx,isMax=i===maxIdx&&counts[i]>0;
-    const col=isCur?'#3b82f6':isMax?'#D85A30':'var(--text3)';
-    const parts=l.split('\n');
-    return`<span style="display:flex;flex-direction:column;align-items:center;min-width:0;flex:1">
-      <span style="font-size:11px;font-weight:${isCur||isMax?700:500};color:${col};line-height:1.3">${parts[0]}</span>
-      ${parts[1]?`<span style="font-size:9px;color:${col};opacity:0.75;line-height:1">${parts[1]}</span>`:''}
-    </span>`;
-  }).join('');
 }
 
 // ============================================================
