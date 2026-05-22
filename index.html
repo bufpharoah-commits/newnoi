@@ -435,7 +435,7 @@ function showToast(m,ms=2500){const t=document.getElementById('toast');t.textCon
 async function loadData(manual=false){
   if(manual){showToast('⏳ กำลังโหลดข้อมูล...');document.getElementById('live-dot').style.background='#f59e0b'}
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+    const url=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
     const resp=await fetch(url,{cache:'no-store'});
     if(!resp.ok)throw new Error('HTTP '+resp.status);
     const text=await resp.text();
@@ -841,9 +841,9 @@ function renderTable(){
         expHtml=cls?`<span class="pill ${cls}">${expPast?'🔴':'🟡'} ${fmtDate(r.expObj)}</span>`:fmtDate(r.expObj)}
       const rTag=r.reason?`<span class="reason-tag">${r.reason}</span>`:'—';
       const img=r.imgUrl
-        ?`<img src="${r.imgUrl}" onclick="openDetail(${idx})" title="ดูรายละเอียด"
+        ?`<img src="${r.imgUrl}" data-idx="${idx}" onclick="openDetail(${idx})" title="ดูรายละเอียด"
             style="width:38px;height:38px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer;display:block"
-            onerror="this.outerHTML='<div class=thumb-placeholder onclick=openDetail(${idx})>📷</div>'">`
+            onerror="this.outerHTML='<div class=thumb-placeholder onclick=openDetail('+this.dataset.idx+')>📷</div>'">`
         :`<div class="thumb-placeholder" onclick="openDetail(${idx})" title="ไม่มีรูป">📷</div>`;
       return`<tr>
         <td><div>${fmtDate(r.dateObj)}</div>${r.scanInTime?`<div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:2px">${r.scanInTime} น.</div>`:''}</td>
@@ -885,9 +885,9 @@ function openDetail(idx){
   if(r.imgUrl){
     const thumb=r.imgUrl;
     const view=thumb.replace('thumbnail?','uc?export=view&').replace('&sz=w400','').replace('&sz=w800','');
-    iw.innerHTML=`<img id="modal-img" src="${thumb}" alt="รูปพัสดุ"
+    iw.innerHTML=`<img id="modal-img" src="${thumb}" data-view="${view}" alt="รูปพัสดุ"
       style="width:100%;max-height:240px;object-fit:contain;display:block"
-      onerror="tryImgFallback(this,'${view}')">`;
+      onerror="tryImgFallback(this,this.dataset.view)">`;
     const dl=document.getElementById('modal-drive-link');
     dl.href=thumb; dl.style.display='flex';
     document.getElementById('divider-drive').style.display='';
