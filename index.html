@@ -334,24 +334,13 @@ tbody tr:hover td{background:#fafaf8}
     <div class="modal-head">
       <div>
         <h2 id="modal-title" style="font-size:15px">รายละเอียดพัสดุ</h2>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">📥 สแกนเข้า · รายละเอียดทั้งหมด</div>
         <div class="modal-tracking" id="modal-tracking" style="margin-top:4px;margin-bottom:0"></div>
       </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
 
-    <!-- Tabs สแกนเข้า / สแกนออก -->
-    <div style="display:flex;gap:0;margin:12px 1.25rem 0;border-bottom:2px solid var(--border)">
-      <button id="tab-in" onclick="switchTab('in')"
-        style="flex:1;padding:8px;border:none;background:transparent;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:600;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer">
-        📥 สแกนเข้า
-      </button>
-      <button id="tab-out" onclick="switchTab('out')"
-        style="flex:1;padding:8px;border:none;background:transparent;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer">
-        📤 สแกนออก
-      </button>
-    </div>
-
-    <!-- ส่วนสแกนเข้า -->
+    <!-- รายละเอียดแบบ inline ไม่มี tab -->
     <div id="section-in">
       <div class="modal-img-wrap" id="modal-img-wrap" style="margin:1rem 1.25rem 0">
         <div class="modal-img-err">📷 ไม่มีรูปภาพ</div>
@@ -359,17 +348,17 @@ tbody tr:hover td{background:#fafaf8}
       <div class="modal-body">
         <div class="info-grid" id="modal-info-in"></div>
         <hr class="modal-divider">
+        <div id="modal-info-out-wrap">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+            <span>📤 ข้อมูลสแกนออก</span>
+          </div>
+          <div class="info-grid" id="modal-info-out"></div>
+        </div>
+        <hr class="modal-divider" id="divider-drive">
         <a class="modal-drive-link" id="modal-drive-link" target="_blank"
           style="display:none;align-items:center;gap:8px;background:var(--info-light);border:1px solid rgba(13,61,107,0.15);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--info);text-decoration:none">
           🔗 เปิดรูปภาพสแกนเข้า
         </a>
-      </div>
-    </div>
-
-    <!-- ส่วนสแกนออก -->
-    <div id="section-out" style="display:none">
-      <div class="modal-body">
-        <div class="info-grid" id="modal-info-out"></div>
       </div>
     </div>
 
@@ -397,8 +386,15 @@ let sparkMode='day';
 function parseGDate(v){
   if(!v)return null;
   const s=v.toString();
-  const m=s.match(/Date\((\d+),(\d+),(\d+)\)/);
-  if(m)return new Date(+m[1],+m[2],+m[3]);
+  // รองรับ Date(year,month,day,hour,minute,second) และ Date(year,month,day)
+  const m=s.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
+  if(m){
+    const yr=+m[1],mo=+m[2],dy=+m[3];
+    const hr=m[4]!==undefined?+m[4]:0;
+    const mn=m[5]!==undefined?+m[5]:0;
+    const sc=m[6]!==undefined?+m[6]:0;
+    return new Date(yr,mo,dy,hr,mn,sc);
+  }
   const p=s.split('/');
   if(p.length===3)return new Date(+p[2],+p[0]-1,+p[1]);
   return null;
@@ -467,8 +463,12 @@ async function loadData(manual=false){
       const imgLink   =c[11]&&c[11].v?c[11].v.toString():''; // L: image link
       const reason    =c[12]&&c[12].v?c[12].v.toString():''; // M: สาเหตุ
 
-      // ดึงเวลาสแกนเข้าจากชื่อไฟล์รูป เช่น TH40058.รูปภาพ.095827.jpg → 09:58:27
-      const scanInTime = extractTimeFromPath(imgPath);
+      // ดึงเวลาจาก dateObj ก่อน (ถ้า Google Sheet มีเวลาในคอลัมน์ A)
+      // ถ้าไม่มี (เวลา 00:00:00) ให้ fallback ไปใช้เวลาจากชื่อไฟล์รูปแทน
+      const timeFromSheet = (dateObj && (dateObj.getHours()!==0||dateObj.getMinutes()!==0||dateObj.getSeconds()!==0))
+        ? String(dateObj.getHours()).padStart(2,'0')+':'+String(dateObj.getMinutes()).padStart(2,'0')+':'+String(dateObj.getSeconds()).padStart(2,'0')
+        : '';
+      const scanInTime = timeFromSheet || extractTimeFromPath(imgPath);
       const imgUrl = buildImgUrl(imgLink, imgPath);
 
       allData.push({
@@ -847,7 +847,7 @@ function renderTable(){
             onerror="this.outerHTML='<div class=thumb-placeholder onclick=openDetail(${idx})>📷</div>'">`
         :`<div class="thumb-placeholder" onclick="openDetail(${idx})" title="ไม่มีรูป">📷</div>`;
       return`<tr>
-        <td>${fmtDate(r.dateObj)}</td>
+        <td><div>${fmtDate(r.dateObj)}</div>${r.scanInTime?`<div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:2px">${r.scanInTime} น.</div>`:''}</td>
         <td><a class="row-link mono" onclick="openDetail(${idx})">${r.tracking}</a></td>
         <td><span class="company-badge">${r.company||'—'}</span></td>
         <td>${r.shelf||'—'}</td>
@@ -876,17 +876,7 @@ function renderTable(){
 
 // ============================================================
 // MODAL
-// ============================================================
-function switchTab(tab){
-  const isIn=tab==='in';
-  document.getElementById('section-in').style.display =isIn?'block':'none';
-  document.getElementById('section-out').style.display=isIn?'none':'block';
-  const tIn=document.getElementById('tab-in'),tOut=document.getElementById('tab-out');
-  tIn.style.cssText +=';color:'+(isIn?'var(--accent)':'var(--text2)')+';border-bottom:'+(isIn?'2px solid var(--accent)':'2px solid transparent')+';font-weight:'+(isIn?'600':'500');
-  tOut.style.cssText+=';color:'+(isIn?'var(--text2)':'var(--accent)')+';border-bottom:'+(isIn?'2px solid transparent':'2px solid var(--accent)')+';font-weight:'+(isIn?'500':'600');
-}
-
-function openDetail(idx){
+// ============================================================function openDetail(idx){
   const r=filtered[idx];if(!r)return;
   document.getElementById('modal-tracking').textContent=r.tracking;
 
@@ -900,9 +890,11 @@ function openDetail(idx){
       onerror="tryImgFallback(this,'${view}')">`;
     const dl=document.getElementById('modal-drive-link');
     dl.href=thumb; dl.style.display='flex';
+    document.getElementById('divider-drive').style.display='';
   }else{
     iw.innerHTML='<div class="modal-img-err">📷 ไม่มีรูปภาพสแกนเข้า<br><small style="color:var(--text3)">ตรวจสอบคอลัมน์ L</small></div>';
     document.getElementById('modal-drive-link').style.display='none';
+    document.getElementById('divider-drive').style.display='none';
   }
 
   // วันที่+เวลาสแกนเข้า
@@ -923,22 +915,23 @@ function openDetail(idx){
     ['⚠️','สาเหตุปัญหา',         r.reason||'ไม่มี'],
   ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
 
-  // Info สแกนออก
+  // Info สแกนออก — แสดง inline ไม่ต้องกด tab
   const hasOut=r.sendDate||r.scanOutBy||r.sendTo;
   const scanOutDateStr=r.sendDate?r.sendDate.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'}):'—';
-  document.getElementById('modal-info-out').innerHTML=hasOut?[
-    ['📤','วันที่สแกนออก', scanOutDateStr],
-    ['📦','ส่งต่อไปที่',   r.sendTo||'—'],
-    ['👤','ผู้บันทึกออก',  r.scanOutBy||'—'],
-  ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('')
-  :`<div style="text-align:center;padding:2rem;color:var(--text3);font-size:13px">
-      <div style="font-size:36px;margin-bottom:8px">📦</div>
-      <div style="font-weight:600;color:var(--text2);margin-bottom:4px">ยังไม่มีการสแกนออก</div>
-      <div>พัสดุยังอยู่ในคลัง</div>
-    </div>`;
+  const outWrap=document.getElementById('modal-info-out-wrap');
+  if(hasOut){
+    outWrap.style.display='';
+    document.getElementById('modal-info-out').innerHTML=[
+      ['📤','วันที่สแกนออก', scanOutDateStr],
+      ['📦','ส่งต่อไปที่',   r.sendTo||'—'],
+      ['👤','ผู้บันทึกออก',  r.scanOutBy||'—'],
+    ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
+  }else{
+    outWrap.style.display='';
+    document.getElementById('modal-info-out').innerHTML=
+      `<div class="info-lbl" style="grid-column:1/-1;color:var(--text3);font-size:12px;font-weight:400;padding:4px 0">📦 ยังไม่มีการสแกนออก — พัสดุยังอยู่ในคลัง</div>`;
+  }
 
-  document.getElementById('tab-out').style.opacity=hasOut?'1':'0.5';
-  switchTab('in');
   document.getElementById('modal').classList.add('open');
 }
 
