@@ -463,12 +463,11 @@ async function loadData(manual=false){
       const imgLink   =c[11]&&c[11].v?c[11].v.toString():''; // L: image link
       const reason    =c[12]&&c[12].v?c[12].v.toString():''; // M: สาเหตุ
 
-      // ดึงเวลาจาก dateObj ก่อน (ถ้า Google Sheet มีเวลาในคอลัมน์ A)
-      // ถ้าไม่มี (เวลา 00:00:00) ให้ fallback ไปใช้เวลาจากชื่อไฟล์รูปแทน
-      const timeFromSheet = (dateObj && (dateObj.getHours()!==0||dateObj.getMinutes()!==0||dateObj.getSeconds()!==0))
-        ? String(dateObj.getHours()).padStart(2,'0')+':'+String(dateObj.getMinutes()).padStart(2,'0')+':'+String(dateObj.getSeconds()).padStart(2,'0')
-        : '';
-      const scanInTime = timeFromSheet || extractTimeFromPath(imgPath);
+      // ดึงเวลาจาก formatted value ของ cell วันที่ (c[0].f) โดยตรง
+      // gviz ส่งค่าแสดงผลจริงใน .f เช่น "15/5/2568 09:58:27"
+      const dateFmt = c[0]&&c[0].f ? c[0].f.toString() : '';
+      const timeMatch = dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      const scanInTime = timeMatch ? timeMatch[1] : '';
       const imgUrl = buildImgUrl(imgLink, imgPath);
 
       allData.push({
@@ -876,7 +875,8 @@ function renderTable(){
 
 // ============================================================
 // MODAL
-// ============================================================function openDetail(idx){
+// ============================================================
+function openDetail(idx){
   const r=filtered[idx];if(!r)return;
   document.getElementById('modal-tracking').textContent=r.tracking;
 
@@ -967,34 +967,30 @@ function exportCSV(){
 // ============================================================
 // START
 // ============================================================
-loadData(false);
-setInterval(()=>loadData(false),5*60*1000);
-</script>
-</body>
-</html>
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+// ============================================================
+// SAVE IMAGE
+// ============================================================
+async function saveImage(){
+  const btn=document.querySelector('[onclick="saveImage()"]');
+  if(btn){btn.textContent='⏳ กำลังบันทึก...';btn.disabled=true;}
+  try{
+    async function loadScript(src){
+      return new Promise((res,rej)=>{
+        if(document.querySelector(`script[src="${src}"]`)){res();return;}
+        const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);
+      });
     }
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
 
-    // สร้าง infographic wrapper
-    const wrap = document.createElement('div');
-    wrap.id = 'infographic-wrap';
-    wrap.style.cssText = `
-      position:fixed; top:-9999px; left:-9999px;
-      width:1200px; background:#f5f4f0;
-      font-family:'Sarabun',sans-serif; padding:32px;
-      box-sizing:border-box;
-    `;
+    const wrap=document.createElement('div');
+    wrap.id='infographic-wrap';
+    wrap.style.cssText=`position:fixed;top:-9999px;left:-9999px;width:1200px;background:#f5f4f0;font-family:'Sarabun',sans-serif;padding:32px;box-sizing:border-box;`;
 
-    const now = new Date().toLocaleString('th-TH', {
-      year:'numeric', month:'long', day:'numeric',
-      hour:'2-digit', minute:'2-digit'
-    });
-    const filterLabel = document.getElementById('s-total-sub').textContent || 'ทั้งหมด';
+    const nowStr=new Date().toLocaleString('th-TH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const filterLabel=document.getElementById('s-total-sub').textContent||'ทั้งหมด';
 
-    // Header
-    wrap.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;
-        background:#1a1917;color:#fff;border-radius:12px;padding:16px 24px;margin-bottom:20px">
+    wrap.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;background:#1a1917;color:#fff;border-radius:12px;padding:16px 24px;margin-bottom:20px">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-size:24px">📦</span>
           <div>
@@ -1003,91 +999,59 @@ setInterval(()=>loadData(false),5*60*1000);
           </div>
         </div>
         <div style="text-align:right;font-size:12px;color:rgba(255,255,255,0.6)">
-          <div>📅 ${now}</div>
+          <div>📅 ${nowStr}</div>
           <div>🔍 ${filterLabel}</div>
         </div>
       </div>`;
 
-    // Stats row
-    const statsHtml = buildInfoStats();
-    wrap.innerHTML += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">${statsHtml}</div>`;
+    const statsCards=[
+      {label:'📦 จำนวนพัสดุ',val:document.getElementById('s-total').textContent,sub:document.getElementById('s-total-sub').textContent,color:'#22c55e'},
+      {label:'🏢 บริษัทขนส่ง',val:document.getElementById('s-companies').textContent,sub:document.getElementById('s-companies-sub').textContent,color:'#3b82f6'},
+      {label:'📈 แนวโน้มช่วงนี้',val:document.getElementById('s-trend-cur').textContent,sub:document.getElementById('s-trend-sub').textContent,color:'#1D9E75'},
+    ];
+    wrap.innerHTML+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">${
+      statsCards.map(c=>`<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:16px 20px;border-top:3px solid ${c.color}">
+        <div style="font-size:12px;color:#6b6861;margin-bottom:6px">${c.label}</div>
+        <div style="font-size:28px;font-weight:700;color:#1a1917;line-height:1">${c.val}</div>
+        <div style="font-size:11px;color:#9c9890;margin-top:4px">${c.sub}</div>
+      </div>`).join('')
+    }</div>`;
 
-    // Trend bars
-    const trendHtml = buildInfoTrend();
-    wrap.innerHTML += `
-      <div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+    const barsEl=document.getElementById('spark-bars');
+    const labelsEl=document.getElementById('spark-labels');
+    if(barsEl&&labelsEl){
+      wrap.innerHTML+=`<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:16px 20px;margin-bottom:20px">
         <div style="font-size:13px;font-weight:600;color:#6b6861;margin-bottom:12px">📈 แนวโน้ม</div>
-        ${trendHtml}
+        <div style="display:flex;gap:8px;align-items:flex-end;height:80px">${barsEl.innerHTML}</div>
+        <div style="display:flex;gap:8px;margin-top:6px">${labelsEl.innerHTML}</div>
       </div>`;
+    }
 
-    // Charts (capture จาก DOM จริง)
-    const chartsEl = document.getElementById('charts-section');
-    if (chartsEl && chartsEl.style.display !== 'none') {
-      const chartsClone = chartsEl.cloneNode(true);
-      chartsClone.style.cssText = 'display:block;margin-bottom:20px';
+    const chartsEl=document.getElementById('charts-section');
+    if(chartsEl&&chartsEl.style.display!=='none'){
+      const chartsClone=chartsEl.cloneNode(true);
+      chartsClone.style.cssText='display:block;margin-bottom:20px';
       wrap.appendChild(chartsClone);
     }
 
-    // Footer
-    wrap.innerHTML += `
-      <div style="text-align:center;font-size:11px;color:#9c9890;padding-top:12px;
-        border-top:1px solid rgba(0,0,0,0.1);margin-top:4px">
-        สร้างโดย ระบบติดตามพัสดุ (นิวน้อย) · ${now}
-      </div>`;
+    wrap.innerHTML+=`<div style="text-align:center;font-size:11px;color:#9c9890;padding-top:12px;border-top:1px solid rgba(0,0,0,0.1);margin-top:4px">สร้างโดย ระบบติดตามพัสดุ (นิวน้อย) · ${nowStr}</div>`;
 
     document.body.appendChild(wrap);
-
-    // Capture
-    const canvas = await html2canvas(wrap, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#f5f4f0',
-      logging: false,
-      width: 1200,
-    });
-
+    const canvas=await html2canvas(wrap,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#f5f4f0',logging:false,width:1200});
     document.body.removeChild(wrap);
 
-    // Download
-    const link = document.createElement('a');
-    const dateStr = new Date().toLocaleDateString('th-TH').replace(/\//g,'-');
-    link.download = `dashboard-${dateStr}.png`;
-    link.href = canvas.toDataURL('image/png');
+    const link=document.createElement('a');
+    const dateStr=new Date().toLocaleDateString('th-TH').replace(/\//g,'-');
+    link.download=`dashboard-${dateStr}.png`;
+    link.href=canvas.toDataURL('image/png');
     link.click();
-
-    showToast('✅ บันทึกภาพสำเร็จ!', 3000);
-
-  } catch(err) {
-    showToast('❌ บันทึกภาพไม่สำเร็จ: ' + err.message, 4000);
+    showToast('✅ บันทึกภาพสำเร็จ!',3000);
+  }catch(err){
+    showToast('❌ บันทึกภาพไม่สำเร็จ: '+err.message,4000);
     console.error(err);
-  } finally {
-    btn.textContent = '📸 บันทึกภาพ';
-    btn.disabled = false;
+  }finally{
+    if(btn){btn.textContent='📸 บันทึกภาพ';btn.disabled=false;}
   }
-}
-
-function buildInfoStats() {
-  const cards = [
-    { label:'📦 จำนวนพัสดุ', val: document.getElementById('s-total').textContent, sub: document.getElementById('s-total-sub').textContent, color:'#22c55e' },
-    { label:'🏢 บริษัทขนส่ง', val: document.getElementById('s-companies').textContent, sub: document.getElementById('s-companies-sub').textContent, color:'#3b82f6' },
-    { label:'📈 แนวโน้มช่วงนี้', val: document.getElementById('s-trend-cur').textContent, sub: document.getElementById('s-trend-sub').textContent, color:'#1D9E75' },
-  ];
-  return cards.map(c => `
-    <div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;
-      padding:16px 20px;border-top:3px solid ${c.color}">
-      <div style="font-size:12px;color:#6b6861;margin-bottom:6px">${c.label}</div>
-      <div style="font-size:28px;font-weight:700;color:#1a1917;line-height:1">${c.val}</div>
-      <div style="font-size:11px;color:#9c9890;margin-top:4px">${c.sub}</div>
-    </div>`).join('');
-}
-
-function buildInfoTrend() {
-  const bars = document.getElementById('spark-bars');
-  const labels = document.getElementById('spark-labels');
-  if (!bars || !labels) return '<div style="color:#9c9890;font-size:12px">ไม่มีข้อมูล</div>';
-  return `<div style="display:flex;gap:8px;align-items:flex-end;height:80px">${bars.innerHTML}</div>
-    <div style="display:flex;gap:8px;margin-top:6px">${labels.innerHTML}</div>`;
 }
 
 // ============================================================
