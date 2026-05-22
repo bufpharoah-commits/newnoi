@@ -298,8 +298,9 @@ tbody tr:hover td{background:#fafaf8}
     <div class="table-wrap">
       <table>
         <colgroup>
-          <col style="width:90px"><col style="width:175px"><col style="width:90px">
-          <col style="width:80px"><col style="width:100px"><col style="width:auto"><col style="width:48px">
+          <col style="width:90px"><col style="width:155px"><col style="width:80px">
+          <col style="width:70px"><col style="width:90px"><col style="width:auto">
+          <col style="width:110px"><col style="width:90px"><col style="width:48px">
         </colgroup>
         <thead>
           <tr>
@@ -309,11 +310,13 @@ tbody tr:hover td{background:#fafaf8}
             <th>ชั้นวาง</th>
             <th onclick="sortBy('exp')">หมดอายุ <span id="sort-exp"></span></th>
             <th>สาเหตุปัญหา</th>
+            <th>📤 ส่งต่อ</th>
+            <th>วันที่ส่ง</th>
             <th>รูป</th>
           </tr>
         </thead>
         <tbody id="tbl-body">
-          <tr><td colspan="7"><div class="state-box"><div class="spinner"></div>
+          <tr><td colspan="9"><div class="state-box"><div class="spinner"></div>
             <div class="state-title">กำลังโหลด...</div></div></td></tr>
         </tbody>
       </table>
@@ -456,15 +459,16 @@ async function loadData(manual=false){
       const scanInBy  =c[4]&&c[4].v?c[4].v.toString():'';   // E: ผู้บันทึกเข้า
       const shelf     =c[5]&&c[5].v?c[5].v.toString():'';   // F: ชั้นวาง
       const expObj    =c[6]?parseGDate(c[6].v):null;         // G: วันหมดอายุ
-      const imgPath   =c[7]&&c[7].v?c[7].v.toString():'';   // H: รูปเข้า (มีเวลาในชื่อ)
+      const imgPath   =c[7]&&c[7].v?c[7].v.toString():'';   // H: รูปภาพ (path)
       const sendTo    =c[8]&&c[8].v?c[8].v.toString():'';   // I: ส่งต่อ
       const sendDate  =c[9]?parseGDate(c[9].v):null;         // J: วันที่ส่ง
       const sendDateFmt=c[9]&&c[9].f?c[9].f.toString():'';
       const sendTimeMatch=sendDateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
       const scanOutTime=sendTimeMatch?sendTimeMatch[1]:'';
       const scanOutBy =c[10]&&c[10].v?c[10].v.toString():''; // K: ผู้บันทึกออก
-      const imgLink   =c[11]&&c[11].v?c[11].v.toString():''; // L: image link
-      const reason    =c[12]&&c[12].v?c[12].v.toString():''; // M: สาเหตุ
+      const detail    =c[11]&&c[11].v?c[11].v.toString():''; // L: รายละเอียด ← ใหม่
+      const imgLink   =c[12]&&c[12].v?c[12].v.toString():''; // M: image link  ← เลื่อน
+      const reason    =c[13]&&c[13].v?c[13].v.toString():''; // N: สาเหตุ      ← เลื่อน
 
       // ดึงเวลาจาก formatted value ของ cell วันที่ (c[0].f) โดยตรง
       // gviz ส่งค่าแสดงผลจริงใน .f เช่น "15/5/2568 09:58:27"
@@ -478,7 +482,7 @@ async function loadData(manual=false){
         scanInBy, scanInTime, shelf, expObj,
         imgPath, imgUrl,
         sendTo, sendDate, scanOutTime, scanOutBy,
-        reason
+        detail, reason
       });
     });
 
@@ -492,7 +496,7 @@ async function loadData(manual=false){
     if(manual)showToast('✅ โหลดสำเร็จ '+allData.length.toLocaleString()+' รายการ');
   }catch(e){
     document.getElementById('live-dot').style.background='#ef4444';
-    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="7"><div class="state-box">
+    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="9"><div class="state-box">
       <div class="state-icon">❌</div><div class="state-title">โหลดข้อมูลไม่สำเร็จ</div>
       <div class="state-sub">${e.message}<br><br>ตรวจสอบว่า Google Sheets ตั้งเป็น <strong>"Anyone with the link can view"</strong></div>
     </div></td></tr>`;
@@ -833,7 +837,7 @@ function renderTable(){
   document.getElementById('tbl-count').textContent=total.toLocaleString()+' รายการ';
 
   if(!pageData.length){
-    body.innerHTML='<tr><td colspan="7"><div class="state-box"><div class="state-icon">🔍</div><div class="state-title">ไม่พบรายการ</div><div class="state-sub">ลองเปลี่ยนเงื่อนไขการค้นหา</div></div></td></tr>';
+    body.innerHTML='<tr><td colspan="9"><div class="state-box"><div class="state-icon">🔍</div><div class="state-title">ไม่พบรายการ</div><div class="state-sub">ลองเปลี่ยนเงื่อนไขการค้นหา</div></div></td></tr>';
   }else{
     body.innerHTML=pageData.map((r,i)=>{
       const idx=start+i;
@@ -843,18 +847,32 @@ function renderTable(){
       if(en){const cls=expPast?'pill-exp':expSoon?'pill-soon':'';
         expHtml=cls?`<span class="pill ${cls}">${expPast?'🔴':'🟡'} ${fmtDate(r.expObj)}</span>`:fmtDate(r.expObj)}
       const rTag=r.reason?`<span class="reason-tag">${r.reason}</span>`:'—';
+
+      // ส่งต่อ
+      const hasOut=r.sendTo||r.sendDate||r.scanOutBy;
+      const sendToHtml=r.sendTo
+        ?`<span style="font-size:11px;font-weight:600;color:var(--accent)">${r.sendTo}</span>`
+        :`<span style="font-size:11px;color:var(--text3)">—</span>`;
+      const scanOutByHtml=r.scanOutBy
+        ?`<div style="font-size:10px;color:var(--text3);margin-top:1px">👤 ${r.scanOutBy}</div>`:'';
+      const sendDateHtml=r.sendDate
+        ?`<div>${fmtDate(r.sendDate)}</div>${r.scanOutTime?`<div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:2px">${r.scanOutTime} น.</div>`:''}`
+        :`<span style="font-size:11px;color:var(--text3)">—</span>`;
+
       const img=r.imgUrl
         ?`<img src="${r.imgUrl}" data-idx="${idx}" onclick="openDetail(${idx})" title="ดูรายละเอียด"
             style="width:38px;height:38px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer;display:block"
             onerror="this.outerHTML='<div class=thumb-placeholder onclick=openDetail('+this.dataset.idx+')>📷</div>'">`
         :`<div class="thumb-placeholder" onclick="openDetail(${idx})" title="ไม่มีรูป">📷</div>`;
-      return`<tr>
+      return`<tr${hasOut?' style="background:rgba(29,158,117,0.04)"':''}>
         <td><div>${fmtDate(r.dateObj)}</div>${r.scanInTime?`<div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:2px">${r.scanInTime} น.</div>`:''}</td>
         <td><a class="row-link mono" onclick="openDetail(${idx})">${r.tracking}</a></td>
         <td><span class="company-badge">${r.company||'—'}</span></td>
         <td>${r.shelf||'—'}</td>
         <td>${expHtml}</td>
         <td>${rTag}</td>
+        <td>${sendToHtml}${scanOutByHtml}</td>
+        <td>${sendDateHtml}</td>
         <td>${img}</td>
       </tr>`;
     }).join('');
@@ -923,12 +941,31 @@ function openDetail(idx){
   const scanOutDateStr=r.sendDate?r.sendDate.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'}):'—';
   const scanOutFull=r.scanOutTime?`${scanOutDateStr} <strong>${r.scanOutTime} น.</strong>`:scanOutDateStr;
   const outWrap=document.getElementById('modal-info-out-wrap');
+
+  // คำนวณระยะเวลาอยู่ในคลัง
+  let durationHtml='—';
+  if(r.dateObj&&r.sendDate){
+    const diffMs=r.sendDate-r.dateObj;
+    const diffDays=Math.floor(diffMs/86400000);
+    const diffHrs=Math.floor((diffMs%86400000)/3600000);
+    durationHtml=diffDays>0?`${diffDays} วัน ${diffHrs} ชั่วโมง`:`${diffHrs} ชั่วโมง`;
+  }
+
   if(hasOut){
     outWrap.style.display='';
+    outWrap.querySelector('div').innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span>📤 ข้อมูลสแกนออก</span>
+        </div>
+        <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(29,158,117,0.12);color:#1D9E75">✅ ส่งออกแล้ว</span>
+      </div>`;
     document.getElementById('modal-info-out').innerHTML=[
-      ['📤','วันที่สแกนออก', scanOutFull],
-      ['📦','ส่งต่อไปที่',   r.sendTo||'—'],
-      ['👤','ผู้บันทึกออก',  r.scanOutBy||'—'],
+      ['📅','วันที่-เวลาสแกนออก', scanOutFull],
+      ['📦','ส่งต่อไปที่',        r.sendTo||'—'],
+      ['👤','ผู้บันทึกออก',       r.scanOutBy||'—'],
+      ['📝','รายละเอียด',         r.detail||'—'],
+      ['⏱️','ระยะเวลาอยู่ในคลัง', durationHtml],
     ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
   }else{
     outWrap.style.display='';
