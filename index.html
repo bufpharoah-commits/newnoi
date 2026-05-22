@@ -459,6 +459,9 @@ async function loadData(manual=false){
       const imgPath   =c[7]&&c[7].v?c[7].v.toString():'';   // H: รูปเข้า (มีเวลาในชื่อ)
       const sendTo    =c[8]&&c[8].v?c[8].v.toString():'';   // I: ส่งต่อ
       const sendDate  =c[9]?parseGDate(c[9].v):null;         // J: วันที่ส่ง
+      const sendDateFmt=c[9]&&c[9].f?c[9].f.toString():'';
+      const sendTimeMatch=sendDateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      const scanOutTime=sendTimeMatch?sendTimeMatch[1]:'';
       const scanOutBy =c[10]&&c[10].v?c[10].v.toString():''; // K: ผู้บันทึกออก
       const imgLink   =c[11]&&c[11].v?c[11].v.toString():''; // L: image link
       const reason    =c[12]&&c[12].v?c[12].v.toString():''; // M: สาเหตุ
@@ -474,7 +477,7 @@ async function loadData(manual=false){
         dateObj, tracking, company, status,
         scanInBy, scanInTime, shelf, expObj,
         imgPath, imgUrl,
-        sendTo, sendDate, scanOutBy,
+        sendTo, sendDate, scanOutTime, scanOutBy,
         reason
       });
     });
@@ -918,11 +921,12 @@ function openDetail(idx){
   // Info สแกนออก — แสดง inline ไม่ต้องกด tab
   const hasOut=r.sendDate||r.scanOutBy||r.sendTo;
   const scanOutDateStr=r.sendDate?r.sendDate.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'}):'—';
+  const scanOutFull=r.scanOutTime?`${scanOutDateStr} <strong>${r.scanOutTime} น.</strong>`:scanOutDateStr;
   const outWrap=document.getElementById('modal-info-out-wrap');
   if(hasOut){
     outWrap.style.display='';
     document.getElementById('modal-info-out').innerHTML=[
-      ['📤','วันที่สแกนออก', scanOutDateStr],
+      ['📤','วันที่สแกนออก', scanOutFull],
       ['📦','ส่งต่อไปที่',   r.sendTo||'—'],
       ['👤','ผู้บันทึกออก',  r.scanOutBy||'—'],
     ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
