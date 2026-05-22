@@ -388,9 +388,9 @@ let sparkMode='day';
 // DATA LOAD
 // ============================================================
 function parseGDate(v){
-  if(!v)return null;
-  const s=v.toString();
-  // รองรับ Date(year,month,day,hour,minute,second) และ Date(year,month,day)
+  if(v===null||v===undefined||v==='')return null;
+  const s=v.toString().trim();
+  // 1. gviz Date() format: Date(year,month,day) หรือ Date(year,month,day,h,m,s)
   const m=s.match(/Date\((\d+),(\d+),(\d+)(?:,(\d+),(\d+),(\d+))?\)/);
   if(m){
     const yr=+m[1],mo=+m[2],dy=+m[3];
@@ -399,6 +399,16 @@ function parseGDate(v){
     const sc=m[6]!==undefined?+m[6]:0;
     return new Date(yr,mo,dy,hr,mn,sc);
   }
+  // 2. Excel serial number (เช่น 46109.0 หรือ 46164.644...)
+  if(/^\d{4,6}(\.\d+)?$/.test(s)){
+    const n=parseFloat(s);
+    if(n>40000&&n<60000){ // ช่วงปี 2009-2064 (reasonable)
+      const d=new Date(Math.round((n-25569)*86400000));
+      return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),
+                      d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds());
+    }
+  }
+  // 3. m/d/yyyy format
   const p=s.split('/');
   if(p.length===3)return new Date(+p[2],+p[0]-1,+p[1]);
   return null;
@@ -407,17 +417,17 @@ function parseGDate(v){
 // แปลง imgLink / imgPath เป็น URL ที่ใช้แสดงรูปได้
 // Google Drive ปัจจุบัน: thumbnail ดีกว่า uc?export=view
 function buildImgUrl(imgLink, imgPath){
+  // decode &amp; ที่ gviz/xlsx ส่งมา
+  const link = imgLink ? imgLink.replace(/&amp;/g,'&').trim() : '';
   // 1. ถ้ามี link ตรงๆ ที่เป็น http
-  if(imgLink && imgLink.startsWith('http')){
-    // แปลง uc?export=view&id=XXX → thumbnail?id=XXX&sz=w400
-    const mId = imgLink.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if(link && link.startsWith('http')){
+    const mId = link.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if(mId) return `https://drive.google.com/thumbnail?id=${mId[1]}&sz=w400`;
-    // แปลง /file/d/XXX/view → thumbnail
-    const mFile = imgLink.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    const mFile = link.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
     if(mFile) return `https://drive.google.com/thumbnail?id=${mFile[1]}&sz=w400`;
-    return imgLink;
+    return link;
   }
-  // 2. ถ้า imgPath คือ File ID ล้วน (ไม่มี / หรือ .)
+  // 2. ถ้า imgPath คือ File ID ล้วน
   if(imgPath && /^[a-zA-Z0-9_-]{20,}$/.test(imgPath.trim())){
     return `https://drive.google.com/thumbnail?id=${imgPath.trim()}&sz=w400`;
   }
@@ -463,34 +473,22 @@ async function loadData(manual=false){
     };
     const fmtVal=(x)=>x&&x.f?x.f.toString().trim():'';
 
-    // Excel serial number → JS Date (วันที่ใน sheet แสกนออก เป็น serial เช่น 46164.644...)
-    function excelSerial(v){
-      const n=parseFloat(v);if(isNaN(n))return null;
-      const d=new Date(Math.round((n-25569)*86400000));
-      return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),
-                      d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds());
-    }
-
-    // ======= BUILD MAP จาก sheet แสกนออก (key = tracking.trim().toLowerCase()) =======
-    // Columns: c[0]=เลขพัสดุ, c[1]=บริษัท, c[2]=รูปภาพ, c[3]=ส่งต่อ
-    //          c[4]=วันที่ส่ง, c[5]=ผู้บันทึกออก, c[6]=รายละเอียด
+    // ======= BUILD MAP จาก sheet แสกนออก =======
+    // Cols: A=เลขพัสดุ, B=บริษัท, C=รูปภาพ, D=ส่งต่อ, E=วันที่ส่ง, F=ผู้บันทึกออก, G=รายละเอียด
     const outMap={};
     jsonOut.table.rows.forEach(row=>{
       if(!row.c||!row.c[0])return;
       const c=row.c;
       const tk=val(c[0]).toLowerCase();
       if(!tk)return;
-      const sendDateRaw=val(c[4]);
-      // parse วันที่ส่ง: gviz Date(), Excel serial, หรือ string "5/22/2026 15:27:50"
+
+      // วันที่ส่ง: parseGDate รับทั้ง Date(), serial number, m/d/yyyy
       let sendDate=null, scanOutTime='';
       if(c[4]&&c[4].v!=null){
-        // 1. ลอง gviz Date() format ก่อน
         sendDate=parseGDate(c[4].v);
-        // 2. ถ้าไม่ได้ ลอง Excel serial number
-        if(!sendDate) sendDate=excelSerial(c[4].v);
-        // 3. ดึงเวลาจาก .f (formatted) หรือ serial fraction
+        // ดึงเวลาจาก serial fraction หรือ .f
         const fStr=fmtVal(c[4]);
-        const tm=(fStr||sendDateRaw).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        const tm=fStr.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
         if(tm){ scanOutTime=tm[1]; }
         else if(sendDate&&(sendDate.getHours()||sendDate.getMinutes()||sendDate.getSeconds())){
           scanOutTime=String(sendDate.getHours()).padStart(2,'0')+':'+
@@ -527,13 +525,21 @@ async function loadData(manual=false){
       const shelf    =val(c[5]);                        // F: ชั้นวาง
       const expObj   =c[6]?parseGDate(c[6].v):null;   // G: วันหมดอายุ
       const imgPath  =val(c[7]);                        // H: รูปภาพ (path)
-      const imgLink  =val(c[8]);                        // I: image link
+      const imgLink  =val(c[8]).replace(/&amp;/g,'&'); // I: image link (decode &amp;)
       const reason   =val(c[9]);                        // J: สาเหตุ
 
-      // เวลาสแกนเข้าจาก .f ของวันที่
+      // เวลาสแกนเข้า: จาก .f ของวันที่ หรือ serial fraction หรือชื่อไฟล์
+      let scanInTime='';
       const dateFmt=fmtVal(c[0]);
-      const tmIn=dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-      const scanInTime=tmIn?tmIn[1]:extractTimeFromPath(imgPath);
+      const tmFmt=dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      if(tmFmt){ scanInTime=tmFmt[1]; }
+      else if(dateObj&&(dateObj.getHours()||dateObj.getMinutes()||dateObj.getSeconds())){
+        scanInTime=String(dateObj.getHours()).padStart(2,'0')+':'+
+                   String(dateObj.getMinutes()).padStart(2,'0')+':'+
+                   String(dateObj.getSeconds()).padStart(2,'0');
+      } else {
+        scanInTime=extractTimeFromPath(imgPath);
+      }
 
       const imgUrl=buildImgUrl(imgLink,imgPath);
 
