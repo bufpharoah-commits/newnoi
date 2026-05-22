@@ -298,9 +298,9 @@ tbody tr:hover td{background:#fafaf8}
     <div class="table-wrap">
       <table>
         <colgroup>
-          <col style="width:90px"><col style="width:155px"><col style="width:80px">
-          <col style="width:70px"><col style="width:90px"><col style="width:auto">
-          <col style="width:110px"><col style="width:90px"><col style="width:48px">
+          <col style="width:88px"><col style="width:148px"><col style="width:76px">
+          <col style="width:68px"><col style="width:88px"><col style="width:90px">
+          <col style="width:auto"><col style="width:105px"><col style="width:88px"><col style="width:46px">
         </colgroup>
         <thead>
           <tr>
@@ -310,13 +310,14 @@ tbody tr:hover td{background:#fafaf8}
             <th>ชั้นวาง</th>
             <th onclick="sortBy('exp')">หมดอายุ <span id="sort-exp"></span></th>
             <th>สาเหตุปัญหา</th>
+            <th>📝 รายละเอียด</th>
             <th>📤 ส่งต่อ</th>
             <th>วันที่ส่ง</th>
             <th>รูป</th>
           </tr>
         </thead>
         <tbody id="tbl-body">
-          <tr><td colspan="9"><div class="state-box"><div class="spinner"></div>
+          <tr><td colspan="10"><div class="state-box"><div class="spinner"></div>
             <div class="state-title">กำลังโหลด...</div></div></td></tr>
         </tbody>
       </table>
@@ -456,19 +457,21 @@ async function loadData(manual=false){
       const status=c[3]&&c[3].v?c[3].v.toString().trim():'';
       if(status!=='นำเข้า')return;
       const company   =c[2]&&c[2].v?c[2].v.toString():'';
-      const scanInBy  =c[4]&&c[4].v?c[4].v.toString():'';   // E: ผู้บันทึกเข้า
-      const shelf     =c[5]&&c[5].v?c[5].v.toString():'';   // F: ชั้นวาง
-      const expObj    =c[6]?parseGDate(c[6].v):null;         // G: วันหมดอายุ
-      const imgPath   =c[7]&&c[7].v?c[7].v.toString():'';   // H: รูปภาพ (path)
-      const sendTo    =c[8]&&c[8].v?c[8].v.toString():'';   // I: ส่งต่อ
-      const sendDate  =c[9]?parseGDate(c[9].v):null;         // J: วันที่ส่ง
-      const sendDateFmt=c[9]&&c[9].f?c[9].f.toString():'';
+      // helper: กรองค่า #N/A ออก
+      const val=(x)=>{ const v=x&&x.v?x.v.toString().trim():''; return(v==='#N/A'||v==='\\#N/A')?'':v; };
+      const scanInBy  =val(c[4]);                                // E: ผู้บันทึกเข้า
+      const shelf     =val(c[5]);                                // F: ชั้นวาง
+      const expObj    =c[6]?parseGDate(c[6].v):null;            // G: วันหมดอายุ
+      const imgPath   =val(c[7]);                                // H: รูปภาพ (path)
+      const sendTo    =val(c[8]);                                // I: ส่งต่อ
+      const sendDate  =(!val(c[9]))?null:parseGDate(c[9].v);    // J: วันที่ส่ง
+      const sendDateFmt=c[9]&&c[9].f&&val(c[9])?c[9].f.toString():'';
       const sendTimeMatch=sendDateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
       const scanOutTime=sendTimeMatch?sendTimeMatch[1]:'';
-      const scanOutBy =c[10]&&c[10].v?c[10].v.toString():''; // K: ผู้บันทึกออก
-      const detail    =c[11]&&c[11].v?c[11].v.toString():''; // L: รายละเอียด ← ใหม่
-      const imgLink   =c[12]&&c[12].v?c[12].v.toString():''; // M: image link  ← เลื่อน
-      const reason    =c[13]&&c[13].v?c[13].v.toString():''; // N: สาเหตุ      ← เลื่อน
+      const scanOutBy =val(c[10]);                               // K: ผู้บันทึกออก
+      const detail    =val(c[11]);                               // L: รายละเอียด
+      const imgLink   =val(c[12]);                               // M: image link
+      const reason    =val(c[13]);                               // N: สาเหตุ
 
       // ดึงเวลาจาก formatted value ของ cell วันที่ (c[0].f) โดยตรง
       // gviz ส่งค่าแสดงผลจริงใน .f เช่น "15/5/2568 09:58:27"
@@ -496,7 +499,7 @@ async function loadData(manual=false){
     if(manual)showToast('✅ โหลดสำเร็จ '+allData.length.toLocaleString()+' รายการ');
   }catch(e){
     document.getElementById('live-dot').style.background='#ef4444';
-    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="9"><div class="state-box">
+    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="10"><div class="state-box">
       <div class="state-icon">❌</div><div class="state-title">โหลดข้อมูลไม่สำเร็จ</div>
       <div class="state-sub">${e.message}<br><br>ตรวจสอบว่า Google Sheets ตั้งเป็น <strong>"Anyone with the link can view"</strong></div>
     </div></td></tr>`;
@@ -837,7 +840,7 @@ function renderTable(){
   document.getElementById('tbl-count').textContent=total.toLocaleString()+' รายการ';
 
   if(!pageData.length){
-    body.innerHTML='<tr><td colspan="9"><div class="state-box"><div class="state-icon">🔍</div><div class="state-title">ไม่พบรายการ</div><div class="state-sub">ลองเปลี่ยนเงื่อนไขการค้นหา</div></div></td></tr>';
+    body.innerHTML='<tr><td colspan="10"><div class="state-box"><div class="state-icon">🔍</div><div class="state-title">ไม่พบรายการ</div><div class="state-sub">ลองเปลี่ยนเงื่อนไขการค้นหา</div></div></td></tr>';
   }else{
     body.innerHTML=pageData.map((r,i)=>{
       const idx=start+i;
@@ -871,6 +874,7 @@ function renderTable(){
         <td>${r.shelf||'—'}</td>
         <td>${expHtml}</td>
         <td>${rTag}</td>
+        <td style="font-size:11px;color:var(--text2)">${r.detail||'—'}</td>
         <td>${sendToHtml}${scanOutByHtml}</td>
         <td>${sendDateHtml}</td>
         <td>${img}</td>
@@ -933,6 +937,7 @@ function openDetail(idx){
     ['🗄️','ชั้นวาง',             r.shelf||'—'],
     ['⏰','วันหมดอายุ',           fmtDate(r.expObj)+(expW?` <span style="color:var(--danger);font-size:11px">${expW}</span>`:'')],
     ['👤','ผู้บันทึกเข้า',        r.scanInBy||'—'],
+    ['📝','รายละเอียด',           r.detail||'—'],
     ['⚠️','สาเหตุปัญหา',         r.reason||'ไม่มี'],
   ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
 
