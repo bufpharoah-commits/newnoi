@@ -439,53 +439,110 @@ function showToast(m,ms=2500){const t=document.getElementById('toast');t.textCon
 async function loadData(manual=false){
   if(manual){showToast('⏳ กำลังโหลดข้อมูล...');document.getElementById('live-dot').style.background='#f59e0b'}
   try{
-    const url=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
-    const resp=await fetch(url,{cache:'no-store'});
-    if(!resp.ok)throw new Error('HTTP '+resp.status);
-    const text=await resp.text();
-    const json=JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,''));
-    if(!json.table||!json.table.rows)throw new Error('ไม่พบข้อมูลในตาราง');
+    // ดึง 2 sheets พร้อมกัน
+    const baseUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
+    const [respIn, respOut] = await Promise.all([
+      fetch(`${baseUrl}&sheet=แสกนเข้า`,  {cache:'no-store'}),
+      fetch(`${baseUrl}&sheet=แสกนออก`, {cache:'no-store'}),
+    ]);
+    if(!respIn.ok)  throw new Error('HTTP '+respIn.status+' (แสกนเข้า)');
+    if(!respOut.ok) throw new Error('HTTP '+respOut.status+' (แสกนออก)');
 
+    const parseGviz=(text)=>JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,''));
+    const jsonIn  = parseGviz(await respIn.text());
+    const jsonOut = parseGviz(await respOut.text());
+
+    if(!jsonIn.table ||!jsonIn.table.rows)  throw new Error('ไม่พบข้อมูลในตาราง (แสกนเข้า)');
+    if(!jsonOut.table||!jsonOut.table.rows) throw new Error('ไม่พบข้อมูลในตาราง (แสกนออก)');
+
+    // helper กรองค่าว่าง/#N/A
+    const val=(x)=>{
+      const v=x&&x.v!=null?x.v.toString().trim():'';
+      return(v==='#N/A'||v==='\\#N/A'||v==='N/A')?'':v;
+    };
+    const fmtVal=(x)=>x&&x.f?x.f.toString().trim():'';
+
+    // ======= BUILD MAP จาก sheet แสกนออก (key = tracking.trim().toLowerCase()) =======
+    // Columns: c[0]=เลขพัสดุ, c[1]=บริษัท, c[2]=รูปภาพ, c[3]=ส่งต่อ
+    //          c[4]=วันที่ส่ง, c[5]=ผู้บันทึกออก, c[6]=รายละเอียด
+    const outMap={};
+    jsonOut.table.rows.forEach(row=>{
+      if(!row.c||!row.c[0])return;
+      const c=row.c;
+      const tk=val(c[0]).toLowerCase();
+      if(!tk)return;
+      const sendDateRaw=val(c[4]);
+      // parse วันที่ส่ง: gviz Date() หรือ string "5/22/2026 15:27:50"
+      let sendDate=null, scanOutTime='';
+      if(c[4]&&c[4].v){
+        sendDate=parseGDate(c[4].v);
+        // ลองดึงเวลาจาก .f ก่อน
+        const fStr=fmtVal(c[4]);
+        const tm=fStr.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(tm) scanOutTime=tm[1];
+        // ถ้าไม่มีใน .f ลองจาก string ตรงๆ
+        if(!scanOutTime){
+          const tm2=sendDateRaw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+          if(tm2) scanOutTime=tm2[1];
+          // parse วันที่ด้วยถ้า gviz ไม่ได้ส่ง Date()
+          if(!sendDate&&sendDateRaw){
+            const dp=sendDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if(dp) sendDate=new Date(+dp[3],+dp[1]-1,+dp[2]);
+          }
+        }
+      }
+      outMap[tk]={
+        sendTo    : val(c[3]),
+        sendDate,
+        scanOutTime,
+        scanOutBy : val(c[5]),
+        detail    : val(c[6]),
+      };
+    });
+
+    // ======= BUILD allData จาก sheet แสกนเข้า =======
+    // Columns: c[0]=A:วันที่, c[1]=B:เลขพัสดุ, c[2]=C:บริษัท, c[3]=D:สถานะ
+    //          c[4]=E:ผู้บันทึกเข้า, c[5]=F:ชั้นวาง, c[6]=G:วันหมดอายุ
+    //          c[7]=H:รูปภาพ, c[8]=I:image link, c[9]=J:สาเหตุ
     allData=[];
-    json.table.rows.forEach(row=>{
+    jsonIn.table.rows.forEach(row=>{
       if(!row.c||!row.c[1])return;
       const c=row.c;
-      const tracking=c[1]&&c[1].v?c[1].v.toString().trim():'';
+      const tracking=val(c[1]);
       if(!tracking)return;
       const dateObj=c[0]?parseGDate(c[0].v):null;
       if(!dateObj)return;
       const status=c[3]&&c[3].v?c[3].v.toString().trim():'';
       if(status!=='นำเข้า')return;
-      const company   =c[2]&&c[2].v?c[2].v.toString():'';
-      // helper: กรองค่า #N/A ออก
-      const val=(x)=>{ const v=x&&x.v?x.v.toString().trim():''; return(v==='#N/A'||v==='\\#N/A')?'':v; };
-      const scanInBy  =val(c[4]);                                // E: ผู้บันทึกเข้า
-      const shelf     =val(c[5]);                                // F: ชั้นวาง
-      const expObj    =c[6]?parseGDate(c[6].v):null;            // G: วันหมดอายุ
-      const imgPath   =val(c[7]);                                // H: รูปภาพ (path)
-      const sendTo    =val(c[8]);                                // I: ส่งต่อ
-      const sendDate  =(!val(c[9]))?null:parseGDate(c[9].v);    // J: วันที่ส่ง
-      const sendDateFmt=c[9]&&c[9].f&&val(c[9])?c[9].f.toString():'';
-      const sendTimeMatch=sendDateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-      const scanOutTime=sendTimeMatch?sendTimeMatch[1]:'';
-      const scanOutBy =val(c[10]);                               // K: ผู้บันทึกออก
-      const detail    =val(c[11]);                               // L: รายละเอียด
-      const imgLink   =val(c[12]);                               // M: image link
-      const reason    =val(c[13]);                               // N: สาเหตุ
 
-      // ดึงเวลาจาก formatted value ของ cell วันที่ (c[0].f) โดยตรง
-      // gviz ส่งค่าแสดงผลจริงใน .f เช่น "15/5/2568 09:58:27"
-      const dateFmt = c[0]&&c[0].f ? c[0].f.toString() : '';
-      const timeMatch = dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-      const scanInTime = timeMatch ? timeMatch[1] : '';
-      const imgUrl = buildImgUrl(imgLink, imgPath);
+      const company  =val(c[2]);
+      const scanInBy =val(c[4]);                       // E: ผู้บันทึกเข้า
+      const shelf    =val(c[5]);                        // F: ชั้นวาง
+      const expObj   =c[6]?parseGDate(c[6].v):null;   // G: วันหมดอายุ
+      const imgPath  =val(c[7]);                        // H: รูปภาพ (path)
+      const imgLink  =val(c[8]);                        // I: image link
+      const reason   =val(c[9]);                        // J: สาเหตุ
+
+      // เวลาสแกนเข้าจาก .f ของวันที่
+      const dateFmt=fmtVal(c[0]);
+      const tmIn=dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      const scanInTime=tmIn?tmIn[1]:extractTimeFromPath(imgPath);
+
+      const imgUrl=buildImgUrl(imgLink,imgPath);
+
+      // JOIN กับข้อมูลสแกนออก
+      const out=outMap[tracking.toLowerCase()]||{};
 
       allData.push({
         dateObj, tracking, company, status,
         scanInBy, scanInTime, shelf, expObj,
-        imgPath, imgUrl,
-        sendTo, sendDate, scanOutTime, scanOutBy,
-        detail, reason
+        imgPath, imgUrl, reason,
+        // จาก sheet แสกนออก
+        sendTo    : out.sendTo    ||'',
+        sendDate  : out.sendDate  ||null,
+        scanOutTime: out.scanOutTime||'',
+        scanOutBy : out.scanOutBy ||'',
+        detail    : out.detail    ||'',
       });
     });
 
