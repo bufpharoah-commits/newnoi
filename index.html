@@ -441,18 +441,19 @@ async function loadData(manual=false){
   try{
     // ดึง 2 sheets พร้อมกัน
     const baseUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
+    // ชื่อ sheet tab จริงใน Google Sheets (ตรวจสอบจาก xlsx)
     const [respIn, respOut] = await Promise.all([
-      fetch(`${baseUrl}&sheet=แสกนเข้า`,  {cache:'no-store'}),
-      fetch(`${baseUrl}&sheet=แสกนออก`, {cache:'no-store'}),
+      fetch(`${baseUrl}&sheet=${encodeURIComponent('นำเข้าสินค้า')}`, {cache:'no-store'}),
+      fetch(`${baseUrl}&sheet=${encodeURIComponent('แสกนออก')}`,      {cache:'no-store'}),
     ]);
-    if(!respIn.ok)  throw new Error('HTTP '+respIn.status+' (แสกนเข้า)');
+    if(!respIn.ok)  throw new Error('HTTP '+respIn.status+' (นำเข้าสินค้า)');
     if(!respOut.ok) throw new Error('HTTP '+respOut.status+' (แสกนออก)');
 
     const parseGviz=(text)=>JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,''));
     const jsonIn  = parseGviz(await respIn.text());
     const jsonOut = parseGviz(await respOut.text());
 
-    if(!jsonIn.table ||!jsonIn.table.rows)  throw new Error('ไม่พบข้อมูลในตาราง (แสกนเข้า)');
+    if(!jsonIn.table ||!jsonIn.table.rows)  throw new Error('ไม่พบข้อมูลในตาราง (นำเข้าสินค้า)');
     if(!jsonOut.table||!jsonOut.table.rows) throw new Error('ไม่พบข้อมูลในตาราง (แสกนออก)');
 
     // helper กรองค่าว่าง/#N/A
@@ -461,6 +462,14 @@ async function loadData(manual=false){
       return(v==='#N/A'||v==='\\#N/A'||v==='N/A')?'':v;
     };
     const fmtVal=(x)=>x&&x.f?x.f.toString().trim():'';
+
+    // Excel serial number → JS Date (วันที่ใน sheet แสกนออก เป็น serial เช่น 46164.644...)
+    function excelSerial(v){
+      const n=parseFloat(v);if(isNaN(n))return null;
+      const d=new Date(Math.round((n-25569)*86400000));
+      return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),
+                      d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds());
+    }
 
     // ======= BUILD MAP จาก sheet แสกนออก (key = tracking.trim().toLowerCase()) =======
     // Columns: c[0]=เลขพัสดุ, c[1]=บริษัท, c[2]=รูปภาพ, c[3]=ส่งต่อ
@@ -472,23 +481,21 @@ async function loadData(manual=false){
       const tk=val(c[0]).toLowerCase();
       if(!tk)return;
       const sendDateRaw=val(c[4]);
-      // parse วันที่ส่ง: gviz Date() หรือ string "5/22/2026 15:27:50"
+      // parse วันที่ส่ง: gviz Date(), Excel serial, หรือ string "5/22/2026 15:27:50"
       let sendDate=null, scanOutTime='';
-      if(c[4]&&c[4].v){
+      if(c[4]&&c[4].v!=null){
+        // 1. ลอง gviz Date() format ก่อน
         sendDate=parseGDate(c[4].v);
-        // ลองดึงเวลาจาก .f ก่อน
+        // 2. ถ้าไม่ได้ ลอง Excel serial number
+        if(!sendDate) sendDate=excelSerial(c[4].v);
+        // 3. ดึงเวลาจาก .f (formatted) หรือ serial fraction
         const fStr=fmtVal(c[4]);
-        const tm=fStr.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-        if(tm) scanOutTime=tm[1];
-        // ถ้าไม่มีใน .f ลองจาก string ตรงๆ
-        if(!scanOutTime){
-          const tm2=sendDateRaw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-          if(tm2) scanOutTime=tm2[1];
-          // parse วันที่ด้วยถ้า gviz ไม่ได้ส่ง Date()
-          if(!sendDate&&sendDateRaw){
-            const dp=sendDateRaw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-            if(dp) sendDate=new Date(+dp[3],+dp[1]-1,+dp[2]);
-          }
+        const tm=(fStr||sendDateRaw).match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(tm){ scanOutTime=tm[1]; }
+        else if(sendDate&&(sendDate.getHours()||sendDate.getMinutes()||sendDate.getSeconds())){
+          scanOutTime=String(sendDate.getHours()).padStart(2,'0')+':'+
+                      String(sendDate.getMinutes()).padStart(2,'0')+':'+
+                      String(sendDate.getSeconds()).padStart(2,'0');
         }
       }
       outMap[tk]={
@@ -553,7 +560,7 @@ async function loadData(manual=false){
     document.getElementById('charts-section').style.display='grid';
     document.getElementById('refresh-time').textContent='อัปเดต '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('live-dot').style.background='#4ade80';
-    if(manual)showToast('✅ โหลดสำเร็จ '+allData.length.toLocaleString()+' รายการ');
+    if(manual)showToast('✅ โหลดสำเร็จ '+allData.length.toLocaleString()+' รายการ (สแกนออกแล้ว '+allData.filter(r=>r.sendDate).length+' รายการ)');
   }catch(e){
     document.getElementById('live-dot').style.background='#ef4444';
     document.getElementById('tbl-body').innerHTML=`<tr><td colspan="10"><div class="state-box">
