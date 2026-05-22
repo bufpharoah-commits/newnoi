@@ -330,23 +330,49 @@ tbody tr:hover td{background:#fafaf8}
 
 <!-- MODAL รายละเอียด -->
 <div class="modal-overlay" id="modal" onclick="if(event.target.id==='modal')closeModal()">
-  <div class="modal">
+  <div class="modal" style="max-width:580px">
     <div class="modal-head">
-      <h2 id="modal-title">รายละเอียดพัสดุ</h2>
+      <div>
+        <h2 id="modal-title" style="font-size:15px">รายละเอียดพัสดุ</h2>
+        <div class="modal-tracking" id="modal-tracking" style="margin-top:4px;margin-bottom:0"></div>
+      </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-img-wrap" id="modal-img-wrap">
-      <div class="modal-img-err">📷 ไม่มีรูปภาพ</div>
+
+    <!-- Tabs สแกนเข้า / สแกนออก -->
+    <div style="display:flex;gap:0;margin:12px 1.25rem 0;border-bottom:2px solid var(--border)">
+      <button id="tab-in" onclick="switchTab('in')"
+        style="flex:1;padding:8px;border:none;background:transparent;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:600;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;cursor:pointer">
+        📥 สแกนเข้า
+      </button>
+      <button id="tab-out" onclick="switchTab('out')"
+        style="flex:1;padding:8px;border:none;background:transparent;font-family:'Sarabun',sans-serif;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer">
+        📤 สแกนออก
+      </button>
     </div>
-    <div class="modal-body">
-      <div class="modal-tracking" id="modal-tracking"></div>
-      <div class="info-grid" id="modal-info"></div>
-      <hr class="modal-divider">
-      <a class="modal-drive-link" id="modal-drive-link" target="_blank"
-        style="display:none;align-items:center;gap:8px;background:var(--info-light);border:1px solid rgba(13,61,107,0.15);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--info);text-decoration:none">
-        🔗 เปิดรูปภาพใน Google Drive
-      </a>
+
+    <!-- ส่วนสแกนเข้า -->
+    <div id="section-in">
+      <div class="modal-img-wrap" id="modal-img-wrap" style="margin:1rem 1.25rem 0">
+        <div class="modal-img-err">📷 ไม่มีรูปภาพ</div>
+      </div>
+      <div class="modal-body">
+        <div class="info-grid" id="modal-info-in"></div>
+        <hr class="modal-divider">
+        <a class="modal-drive-link" id="modal-drive-link" target="_blank"
+          style="display:none;align-items:center;gap:8px;background:var(--info-light);border:1px solid rgba(13,61,107,0.15);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--info);text-decoration:none">
+          🔗 เปิดรูปภาพสแกนเข้า
+        </a>
+      </div>
     </div>
+
+    <!-- ส่วนสแกนออก -->
+    <div id="section-out" style="display:none">
+      <div class="modal-body">
+        <div class="info-grid" id="modal-info-out"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -397,6 +423,14 @@ function buildImgUrl(imgLink, imgPath){
   }
   return '';
 }
+// ดึงเวลาจากชื่อไฟล์ เช่น "TH40058.รูปภาพ.095827.jpg" → "09:58:27"
+function extractTimeFromPath(path){
+  if(!path) return '';
+  const fname=path.split('/').pop();
+  const m=fname.match(/\.(\d{6})\./);
+  if(m){const t=m[1];return t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6);}
+  return '';
+}
 function fmtDate(d){if(!d)return'—';return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})}
 function today0(){const d=new Date();d.setHours(0,0,0,0);return d}
 function monDay(d){const r=new Date(d);const dw=r.getDay();r.setDate(r.getDate()-(dw===0?6:dw-1));r.setHours(0,0,0,0);return r}
@@ -422,15 +456,28 @@ async function loadData(manual=false){
       if(!dateObj)return;
       const status=c[3]&&c[3].v?c[3].v.toString().trim():'';
       if(status!=='นำเข้า')return;
-      const company=c[2]&&c[2].v?c[2].v.toString():'';
-      const action =c[4]&&c[4].v?c[4].v.toString():'';
-      const shelf  =c[5]&&c[5].v?c[5].v.toString():'';
-      const expObj =c[6]?parseGDate(c[6].v):null;
-      const imgPath=c[7]&&c[7].v?c[7].v.toString():'';
-      const imgLink=c[11]&&c[11].v?c[11].v.toString():'';
-      const reason =c[12]&&c[12].v?c[12].v.toString():'';
-      const imgUrl =buildImgUrl(imgLink, imgPath);
-      allData.push({dateObj,tracking,company,status,action,shelf,expObj,imgPath,imgUrl,reason});
+      const company   =c[2]&&c[2].v?c[2].v.toString():'';
+      const scanInBy  =c[4]&&c[4].v?c[4].v.toString():'';   // E: ผู้บันทึกเข้า
+      const shelf     =c[5]&&c[5].v?c[5].v.toString():'';   // F: ชั้นวาง
+      const expObj    =c[6]?parseGDate(c[6].v):null;         // G: วันหมดอายุ
+      const imgPath   =c[7]&&c[7].v?c[7].v.toString():'';   // H: รูปเข้า (มีเวลาในชื่อ)
+      const sendTo    =c[8]&&c[8].v?c[8].v.toString():'';   // I: ส่งต่อ
+      const sendDate  =c[9]?parseGDate(c[9].v):null;         // J: วันที่ส่ง
+      const scanOutBy =c[10]&&c[10].v?c[10].v.toString():''; // K: ผู้บันทึกออก
+      const imgLink   =c[11]&&c[11].v?c[11].v.toString():''; // L: image link
+      const reason    =c[12]&&c[12].v?c[12].v.toString():''; // M: สาเหตุ
+
+      // ดึงเวลาสแกนเข้าจากชื่อไฟล์รูป เช่น TH40058.รูปภาพ.095827.jpg → 09:58:27
+      const scanInTime = extractTimeFromPath(imgPath);
+      const imgUrl = buildImgUrl(imgLink, imgPath);
+
+      allData.push({
+        dateObj, tracking, company, status,
+        scanInBy, scanInTime, shelf, expObj,
+        imgPath, imgUrl,
+        sendTo, sendDate, scanOutBy,
+        reason
+      });
     });
 
     if(allData.length===0)throw new Error('ไม่พบข้อมูลสถานะ "นำเข้า"');
@@ -830,47 +877,77 @@ function renderTable(){
 // ============================================================
 // MODAL
 // ============================================================
+function switchTab(tab){
+  const isIn=tab==='in';
+  document.getElementById('section-in').style.display =isIn?'block':'none';
+  document.getElementById('section-out').style.display=isIn?'none':'block';
+  const tIn=document.getElementById('tab-in'),tOut=document.getElementById('tab-out');
+  tIn.style.cssText +=';color:'+(isIn?'var(--accent)':'var(--text2)')+';border-bottom:'+(isIn?'2px solid var(--accent)':'2px solid transparent')+';font-weight:'+(isIn?'600':'500');
+  tOut.style.cssText+=';color:'+(isIn?'var(--text2)':'var(--accent)')+';border-bottom:'+(isIn?'2px solid transparent':'2px solid var(--accent)')+';font-weight:'+(isIn?'500':'600');
+}
+
 function openDetail(idx){
   const r=filtered[idx];if(!r)return;
   document.getElementById('modal-tracking').textContent=r.tracking;
-  const iw=document.getElementById('modal-img-wrap');
 
+  // รูปสแกนเข้า
+  const iw=document.getElementById('modal-img-wrap');
   if(r.imgUrl){
-    // thumbnail → uc?export=view → แสดง error
     const thumb=r.imgUrl;
-    const view=thumb.replace('thumbnail?','uc?export=view&').replace('&sz=w400','');
+    const view=thumb.replace('thumbnail?','uc?export=view&').replace('&sz=w400','').replace('&sz=w800','');
     iw.innerHTML=`<img id="modal-img" src="${thumb}" alt="รูปพัสดุ"
-      style="width:100%;max-height:300px;object-fit:contain;display:block"
+      style="width:100%;max-height:240px;object-fit:contain;display:block"
       onerror="tryImgFallback(this,'${view}')">`;
     const dl=document.getElementById('modal-drive-link');
     dl.href=thumb; dl.style.display='flex';
   }else{
-    iw.innerHTML='<div class="modal-img-err">📷 ไม่มีรูปภาพ<br><small style="color:var(--text3)">ตรวจสอบคอลัมน์ L ใน Sheets</small></div>';
+    iw.innerHTML='<div class="modal-img-err">📷 ไม่มีรูปภาพสแกนเข้า<br><small style="color:var(--text3)">ตรวจสอบคอลัมน์ L</small></div>';
     document.getElementById('modal-drive-link').style.display='none';
   }
+
+  // วันที่+เวลาสแกนเข้า
+  const scanInDateStr=r.dateObj?r.dateObj.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'}):'—';
+  const scanInFull=r.scanInTime?`${scanInDateStr} <strong>${r.scanInTime} น.</strong>`:scanInDateStr;
 
   const now=today0();
   const en=r.expObj?new Date(r.expObj):null;if(en)en.setHours(0,0,0,0);
   const expW=en&&en<now?'🔴 หมดอายุแล้ว':(en&&en<=new Date(now.getTime()+7*86400000))?'🟡 ใกล้หมดอายุ':'';
-  document.getElementById('modal-info').innerHTML=[
-    ['📅','วันที่รับเข้า',fmtDate(r.dateObj)],
-    ['🏢','บริษัทขนส่ง',r.company||'—'],
-    ['🗄️','ชั้นวาง',r.shelf||'—'],
-    ['⏰','วันหมดอายุ',fmtDate(r.expObj)+(expW?` <span style="color:var(--danger);font-size:11px">${expW}</span>`:'')],
-    ['🔄','ดำเนินการ',r.action||'—'],
-    ['⚠️','สาเหตุปัญหา',r.reason||'ไม่มี'],
-    ['🖼️','Image URL',r.imgUrl?`<a href="${r.imgUrl}" target="_blank" style="color:var(--info);font-size:11px;word-break:break-all">เปิดลิงก์</a>`:'ไม่มี'],
+
+  // Info สแกนเข้า
+  document.getElementById('modal-info-in').innerHTML=[
+    ['📅','วันที่-เวลาสแกนเข้า', scanInFull],
+    ['🏢','บริษัทขนส่ง',         r.company||'—'],
+    ['🗄️','ชั้นวาง',             r.shelf||'—'],
+    ['⏰','วันหมดอายุ',           fmtDate(r.expObj)+(expW?` <span style="color:var(--danger);font-size:11px">${expW}</span>`:'')],
+    ['👤','ผู้บันทึกเข้า',        r.scanInBy||'—'],
+    ['⚠️','สาเหตุปัญหา',         r.reason||'ไม่มี'],
   ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('');
+
+  // Info สแกนออก
+  const hasOut=r.sendDate||r.scanOutBy||r.sendTo;
+  const scanOutDateStr=r.sendDate?r.sendDate.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'}):'—';
+  document.getElementById('modal-info-out').innerHTML=hasOut?[
+    ['📤','วันที่สแกนออก', scanOutDateStr],
+    ['📦','ส่งต่อไปที่',   r.sendTo||'—'],
+    ['👤','ผู้บันทึกออก',  r.scanOutBy||'—'],
+  ].map(([ic,lb,vl])=>`<div class="info-lbl">${ic} ${lb}</div><div class="info-val">${vl}</div>`).join('')
+  :`<div style="text-align:center;padding:2rem;color:var(--text3);font-size:13px">
+      <div style="font-size:36px;margin-bottom:8px">📦</div>
+      <div style="font-weight:600;color:var(--text2);margin-bottom:4px">ยังไม่มีการสแกนออก</div>
+      <div>พัสดุยังอยู่ในคลัง</div>
+    </div>`;
+
+  document.getElementById('tab-out').style.opacity=hasOut?'1':'0.5';
+  switchTab('in');
   document.getElementById('modal').classList.add('open');
 }
 
 function tryImgFallback(img, fallbackUrl){
-  if(img.dataset.tried) {
+  if(img.dataset.tried){
     img.parentElement.innerHTML='<div class="modal-img-err">📷 โหลดรูปไม่สำเร็จ<br><small style="color:var(--text3)">โฟลเดอร์ Drive ต้องเปิดเป็น Public</small></div>';
     return;
   }
-  img.dataset.tried='1';
-  img.src=fallbackUrl;
+  img.dataset.tried='1';img.src=fallbackUrl;
 }
 
 function closeModal(){document.getElementById('modal').classList.remove('open')}
@@ -892,6 +969,132 @@ function exportCSV(){
   a.download='parcels_'+new Date().toLocaleDateString('th-TH').replace(/\//g,'-')+'.csv';
   a.click();
   showToast('✅ ส่งออก '+filtered.length.toLocaleString()+' รายการ');
+}
+
+// ============================================================
+// START
+// ============================================================
+loadData(false);
+setInterval(()=>loadData(false),5*60*1000);
+</script>
+</body>
+</html>
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    }
+
+    // สร้าง infographic wrapper
+    const wrap = document.createElement('div');
+    wrap.id = 'infographic-wrap';
+    wrap.style.cssText = `
+      position:fixed; top:-9999px; left:-9999px;
+      width:1200px; background:#f5f4f0;
+      font-family:'Sarabun',sans-serif; padding:32px;
+      box-sizing:border-box;
+    `;
+
+    const now = new Date().toLocaleString('th-TH', {
+      year:'numeric', month:'long', day:'numeric',
+      hour:'2-digit', minute:'2-digit'
+    });
+    const filterLabel = document.getElementById('s-total-sub').textContent || 'ทั้งหมด';
+
+    // Header
+    wrap.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        background:#1a1917;color:#fff;border-radius:12px;padding:16px 24px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:24px">📦</span>
+          <div>
+            <div style="font-size:18px;font-weight:700">ระบบติดตามพัสดุ (นิวน้อย)</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.5)">Parcel Dashboard Report</div>
+          </div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:rgba(255,255,255,0.6)">
+          <div>📅 ${now}</div>
+          <div>🔍 ${filterLabel}</div>
+        </div>
+      </div>`;
+
+    // Stats row
+    const statsHtml = buildInfoStats();
+    wrap.innerHTML += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">${statsHtml}</div>`;
+
+    // Trend bars
+    const trendHtml = buildInfoTrend();
+    wrap.innerHTML += `
+      <div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;padding:16px 20px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:600;color:#6b6861;margin-bottom:12px">📈 แนวโน้ม</div>
+        ${trendHtml}
+      </div>`;
+
+    // Charts (capture จาก DOM จริง)
+    const chartsEl = document.getElementById('charts-section');
+    if (chartsEl && chartsEl.style.display !== 'none') {
+      const chartsClone = chartsEl.cloneNode(true);
+      chartsClone.style.cssText = 'display:block;margin-bottom:20px';
+      wrap.appendChild(chartsClone);
+    }
+
+    // Footer
+    wrap.innerHTML += `
+      <div style="text-align:center;font-size:11px;color:#9c9890;padding-top:12px;
+        border-top:1px solid rgba(0,0,0,0.1);margin-top:4px">
+        สร้างโดย ระบบติดตามพัสดุ (นิวน้อย) · ${now}
+      </div>`;
+
+    document.body.appendChild(wrap);
+
+    // Capture
+    const canvas = await html2canvas(wrap, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#f5f4f0',
+      logging: false,
+      width: 1200,
+    });
+
+    document.body.removeChild(wrap);
+
+    // Download
+    const link = document.createElement('a');
+    const dateStr = new Date().toLocaleDateString('th-TH').replace(/\//g,'-');
+    link.download = `dashboard-${dateStr}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    showToast('✅ บันทึกภาพสำเร็จ!', 3000);
+
+  } catch(err) {
+    showToast('❌ บันทึกภาพไม่สำเร็จ: ' + err.message, 4000);
+    console.error(err);
+  } finally {
+    btn.textContent = '📸 บันทึกภาพ';
+    btn.disabled = false;
+  }
+}
+
+function buildInfoStats() {
+  const cards = [
+    { label:'📦 จำนวนพัสดุ', val: document.getElementById('s-total').textContent, sub: document.getElementById('s-total-sub').textContent, color:'#22c55e' },
+    { label:'🏢 บริษัทขนส่ง', val: document.getElementById('s-companies').textContent, sub: document.getElementById('s-companies-sub').textContent, color:'#3b82f6' },
+    { label:'📈 แนวโน้มช่วงนี้', val: document.getElementById('s-trend-cur').textContent, sub: document.getElementById('s-trend-sub').textContent, color:'#1D9E75' },
+  ];
+  return cards.map(c => `
+    <div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;
+      padding:16px 20px;border-top:3px solid ${c.color}">
+      <div style="font-size:12px;color:#6b6861;margin-bottom:6px">${c.label}</div>
+      <div style="font-size:28px;font-weight:700;color:#1a1917;line-height:1">${c.val}</div>
+      <div style="font-size:11px;color:#9c9890;margin-top:4px">${c.sub}</div>
+    </div>`).join('');
+}
+
+function buildInfoTrend() {
+  const bars = document.getElementById('spark-bars');
+  const labels = document.getElementById('spark-labels');
+  if (!bars || !labels) return '<div style="color:#9c9890;font-size:12px">ไม่มีข้อมูล</div>';
+  return `<div style="display:flex;gap:8px;align-items:flex-end;height:80px">${bars.innerHTML}</div>
+    <div style="display:flex;gap:8px;margin-top:6px">${labels.innerHTML}</div>`;
 }
 
 // ============================================================
