@@ -454,23 +454,40 @@ function monDay(d){const r=new Date(d);const dw=r.getDay();r.setDate(r.getDate()
 function showToast(m,ms=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
 
 async function loadData(manual=false){
-  if(manual){showToast('⏳ กำลังโหลดข้อมูล...');document.getElementById('live-dot').style.background='#f59e0b'}
+  document.getElementById('live-dot').style.background='#f59e0b';
+  if(manual) showToast('⏳ กำลังโหลดข้อมูล...');
   try{
     const baseUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
 
     async function fetchSheet(name){
       const url=`${baseUrl}&sheet=${encodeURIComponent(name)}`;
-      let resp;
-      try{ resp=await fetch(url,{cache:'no-store'}); }
-      catch(netErr){ throw new Error('เชื่อมต่อไม่ได้: '+netErr.message); }
-      const text=await resp.text();
-      // กรณี sheet ไม่ public → gviz คืน "Host not in allowlist" หรือ HTTP 403
-      if(resp.status===403||text.includes('allowlist')||text.includes('Signin')||text.length<60){
+      let resp, text;
+      try{
+        resp = await fetch(url, {cache:'no-store', mode:'cors'});
+        text = await resp.text();
+      } catch(netErr){
+        throw new Error('เชื่อมต่อไม่ได้ ('+name+'): '+netErr.message);
+      }
+      // ตรวจสอบสิทธิ์ — gviz คืน "Host not in allowlist" หรือ "Signin" เมื่อ Sheet ไม่ใช่ Public
+      if(
+        resp.status===401 || resp.status===403 ||
+        text.includes('allowlist') ||
+        text.includes('Signin') ||
+        text.includes('ServiceLogin') ||
+        text.trim().length < 80
+      ){
         throw new Error('403_PERMISSION');
       }
       if(!resp.ok) throw new Error('HTTP '+resp.status+' ('+name+')');
-      try{ return JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,'')); }
-      catch(e){ throw new Error('parse error ('+name+'): '+e.message); }
+      // gviz ส่งกลับ: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+      const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)\s*;?\s*$/);
+      if(m){
+        try{ return JSON.parse(m[1]); }
+        catch(e){ throw new Error('parse error ('+name+'): '+e.message); }
+      }
+      // fallback
+      try{ return JSON.parse(text.replace(/^[^{]*/,'').replace(/[^}]*$/,'')); }
+      catch(e){ throw new Error('parse error ('+name+'): '+e.message+' | raw: '+text.slice(0,120)); }
     }
 
     const [jsonIn,jsonOut]=await Promise.all([
@@ -600,22 +617,41 @@ async function loadData(manual=false){
   }catch(e){
     document.getElementById('live-dot').style.background='#ef4444';
     const is403=e.message==='403_PERMISSION';
+    const sheetUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`;
     const errHtml=is403
       ?`<div class="state-icon">🔒</div>
         <div class="state-title">Google Sheets ยังไม่ได้ตั้งเป็น Public</div>
-        <div class="state-sub" style="text-align:left;max-width:420px">
-          <b>วิธีแก้ไข:</b><br>
-          1. เปิด Google Sheets → คลิก <b>Share</b> (แชร์) มุมขวาบน<br>
-          2. คลิก <b>"Change to anyone with the link"</b><br>
-          3. ตั้งสิทธิ์เป็น <b>"Viewer"</b> แล้วคลิก <b>Done</b><br>
-          4. กลับมากด <b>🔄 รีเฟรช</b><br><br>
-          <span style="color:var(--danger);font-size:11px">⚠️ ต้องทำทั้ง 2 sheets: "นำเข้าสินค้า" และ "แสกนออก"</span>
+        <div class="state-sub" style="text-align:left;max-width:460px;line-height:1.8">
+          <b>วิธีแก้ไข (ทำครั้งเดียว):</b><br>
+          1. คลิกปุ่มด้านล่าง → หน้า Google Sheets จะเปิดขึ้น<br>
+          2. คลิก <b>Share</b> (แชร์) มุมขวาบน<br>
+          3. ที่ General access → เปลี่ยนเป็น <b>"Anyone with the link"</b><br>
+          4. ตั้งสิทธิ์เป็น <b>Viewer</b> แล้วคลิก <b>Done</b><br>
+          5. กลับมากด <b>🔄 รีเฟรช</b><br><br>
+          <span style="color:var(--danger);font-size:11px">⚠️ ต้องทำให้ Spreadsheet ทั้งไฟล์เป็น Public (ไม่ใช่แค่บาง sheet)</span><br><br>
+          <a href="${sheetUrl}" target="_blank"
+            style="display:inline-flex;align-items:center;gap:6px;background:#1a5c3a;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;margin-top:4px">
+            📊 เปิด Google Sheets
+          </a>
+          &nbsp;
+          <button onclick="loadData(true)"
+            style="display:inline-flex;align-items:center;gap:6px;background:#3b82f6;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;border:none;cursor:pointer;margin-top:4px;font-family:inherit">
+            🔄 รีเฟรชอีกครั้ง
+          </button>
         </div>`
       :`<div class="state-icon">❌</div>
         <div class="state-title">โหลดข้อมูลไม่สำเร็จ</div>
-        <div class="state-sub">${e.message}</div>`;
+        <div class="state-sub">${e.message}<br><br>
+          <button onclick="loadData(true)"
+            style="display:inline-flex;align-items:center;gap:6px;background:#3b82f6;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;border:none;cursor:pointer;font-family:inherit">
+            🔄 ลองใหม่
+          </button>
+        </div>`;
     document.getElementById('tbl-body').innerHTML=`<tr><td colspan="10"><div class="state-box">${errHtml}</div></td></tr>`;
-    if(manual)showToast(is403?'🔒 Sheet ไม่ได้ตั้งเป็น Public':'❌ '+e.message, 5000);
+    // แสดง toast เสมอ ไม่ว่า manual หรือ auto-refresh
+    showToast(is403?'🔒 Sheet ไม่ได้ตั้งเป็น Public — กรุณาตั้งสิทธิ์เป็น Anyone with link':'❌ '+e.message, 6000);
+    // รีเซ็ต stat cards
+    ['s-total','s-companies','s-trend-cur'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='—'});
   }
 }
 
