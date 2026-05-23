@@ -456,22 +456,29 @@ function showToast(m,ms=2500){const t=document.getElementById('toast');t.textCon
 async function loadData(manual=false){
   if(manual){showToast('⏳ กำลังโหลดข้อมูล...');document.getElementById('live-dot').style.background='#f59e0b'}
   try{
-    // ดึง 2 sheets พร้อมกัน
     const baseUrl=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1`;
-    // ชื่อ sheet tab จริงใน Google Sheets (ตรวจสอบจาก xlsx)
-    const [respIn, respOut] = await Promise.all([
-      fetch(`${baseUrl}&sheet=${encodeURIComponent('นำเข้าสินค้า')}`, {cache:'no-store'}),
-      fetch(`${baseUrl}&sheet=${encodeURIComponent('แสกนออก')}`,      {cache:'no-store'}),
+
+    async function fetchSheet(name){
+      const url=`${baseUrl}&sheet=${encodeURIComponent(name)}`;
+      let resp;
+      try{ resp=await fetch(url,{cache:'no-store'}); }
+      catch(netErr){ throw new Error('เชื่อมต่อไม่ได้: '+netErr.message); }
+      const text=await resp.text();
+      // กรณี sheet ไม่ public → gviz คืน "Host not in allowlist" หรือ HTTP 403
+      if(resp.status===403||text.includes('allowlist')||text.includes('Signin')||text.length<60){
+        throw new Error('403_PERMISSION');
+      }
+      if(!resp.ok) throw new Error('HTTP '+resp.status+' ('+name+')');
+      try{ return JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,'')); }
+      catch(e){ throw new Error('parse error ('+name+'): '+e.message); }
+    }
+
+    const [jsonIn,jsonOut]=await Promise.all([
+      fetchSheet('นำเข้าสินค้า'),
+      fetchSheet('แสกนออก'),
     ]);
-    if(!respIn.ok)  throw new Error('HTTP '+respIn.status+' (นำเข้าสินค้า)');
-    if(!respOut.ok) throw new Error('HTTP '+respOut.status+' (แสกนออก)');
-
-    const parseGviz=(text)=>JSON.parse(text.replace(/^[^\{]+/,'').replace(/[^\}]+$/,''));
-    const jsonIn  = parseGviz(await respIn.text());
-    const jsonOut = parseGviz(await respOut.text());
-
-    if(!jsonIn.table ||!jsonIn.table.rows)  throw new Error('ไม่พบข้อมูลในตาราง (นำเข้าสินค้า)');
-    if(!jsonOut.table||!jsonOut.table.rows) throw new Error('ไม่พบข้อมูลในตาราง (แสกนออก)');
+    if(!jsonIn.table ||!jsonIn.table.rows)  throw new Error('ไม่พบข้อมูล (นำเข้าสินค้า)');
+    if(!jsonOut.table||!jsonOut.table.rows) throw new Error('ไม่พบข้อมูล (แสกนออก)');
 
     // helper กรองค่าว่าง/#N/A
     const val=(x)=>{
@@ -576,11 +583,23 @@ async function loadData(manual=false){
     if(manual)showToast('✅ โหลดสำเร็จ '+allData.length.toLocaleString()+' รายการ (สแกนออกแล้ว '+allData.filter(r=>r.sendDate).length+' รายการ)');
   }catch(e){
     document.getElementById('live-dot').style.background='#ef4444';
-    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="10"><div class="state-box">
-      <div class="state-icon">❌</div><div class="state-title">โหลดข้อมูลไม่สำเร็จ</div>
-      <div class="state-sub">${e.message}<br><br>ตรวจสอบว่า Google Sheets ตั้งเป็น <strong>"Anyone with the link can view"</strong></div>
-    </div></td></tr>`;
-    if(manual)showToast('❌ '+e.message,4000);
+    const is403=e.message==='403_PERMISSION';
+    const errHtml=is403
+      ?`<div class="state-icon">🔒</div>
+        <div class="state-title">Google Sheets ยังไม่ได้ตั้งเป็น Public</div>
+        <div class="state-sub" style="text-align:left;max-width:420px">
+          <b>วิธีแก้ไข:</b><br>
+          1. เปิด Google Sheets → คลิก <b>Share</b> (แชร์) มุมขวาบน<br>
+          2. คลิก <b>"Change to anyone with the link"</b><br>
+          3. ตั้งสิทธิ์เป็น <b>"Viewer"</b> แล้วคลิก <b>Done</b><br>
+          4. กลับมากด <b>🔄 รีเฟรช</b><br><br>
+          <span style="color:var(--danger);font-size:11px">⚠️ ต้องทำทั้ง 2 sheets: "นำเข้าสินค้า" และ "แสกนออก"</span>
+        </div>`
+      :`<div class="state-icon">❌</div>
+        <div class="state-title">โหลดข้อมูลไม่สำเร็จ</div>
+        <div class="state-sub">${e.message}</div>`;
+    document.getElementById('tbl-body').innerHTML=`<tr><td colspan="10"><div class="state-box">${errHtml}</div></td></tr>`;
+    if(manual)showToast(is403?'🔒 Sheet ไม่ได้ตั้งเป็น Public':'❌ '+e.message, 5000);
   }
 }
 
