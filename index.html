@@ -488,7 +488,7 @@ async function loadData(manual=false){
     const fmtVal=(x)=>x&&x.f?x.f.toString().trim():'';
 
     // ======= BUILD MAP จาก sheet แสกนออก =======
-    // Cols: A=เลขพัสดุ, B=บริษัท, C=รูปภาพ, D=ส่งต่อ, E=วันที่ส่ง, F=ผู้บันทึกออก, G=รายละเอียด
+    // Cols: A=เลขพัสดุ, B=บริษัท, C=รูปภาพ, D=ส่งต่อ, E=วันที่ส่ง, F=เวลา, G=ผู้บันทึกออก, H=รายละเอียด
     const outMap={};
     jsonOut.table.rows.forEach(row=>{
       if(!row.c||!row.c[0])return;
@@ -510,49 +510,65 @@ async function loadData(manual=false){
                       String(sendDate.getSeconds()).padStart(2,'0');
         }
       }
+      // F=เวลา (c[5]) — ถ้ายังไม่ได้เวลาจาก E ให้ดึงจาก F
+      if(!scanOutTime && c[5]&&c[5].v!=null){
+        const fStr2=fmtVal(c[5])||val(c[5]);
+        const tm2=fStr2.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(tm2) scanOutTime=tm2[1];
+      }
       outMap[tk]={
         sendTo    : val(c[3]),
         sendDate,
         scanOutTime,
-        scanOutBy : val(c[5]),
-        detail    : val(c[6]),
+        scanOutBy : val(c[6]),   // G=ผู้บันทึกออก
+        detail    : val(c[7]),   // H=รายละเอียด
       };
     });
 
     // ======= BUILD allData จาก sheet แสกนเข้า =======
-    // Columns: c[0]=A:วันที่, c[1]=B:เลขพัสดุ, c[2]=C:บริษัท, c[3]=D:สถานะ
-    //          c[4]=E:ผู้บันทึกเข้า, c[5]=F:ชั้นวาง, c[6]=G:วันหมดอายุ
-    //          c[7]=H:รูปภาพ, c[8]=I:image link, c[9]=J:สาเหตุ
+    // Columns: c[0]=A:วันที่, c[1]=B:เวลา, c[2]=C:เลขพัสดุ, c[3]=D:บริษัท, c[4]=E:สถานะ
+    //          c[5]=F:ผู้บันทึกเข้า, c[6]=G:ชั้นวาง, c[7]=H:วันหมดอายุ
+    //          c[8]=I:รูปภาพ, c[9]=J:image link, c[10]=K:สาเหตุ
     allData=[];
     jsonIn.table.rows.forEach(row=>{
-      if(!row.c||!row.c[1])return;
+      if(!row.c)return;
       const c=row.c;
-      const tracking=val(c[1]);
+      // รองรับทั้ง layout เก่า (c[1]=tracking) และใหม่ (c[2]=tracking)
+      // ตรวจสอบว่า c[2] คือเลขพัสดุ (ไม่ใช่บริษัท)
+      const tracking=val(c[2]);
       if(!tracking)return;
       const dateObj=c[0]?parseGDate(c[0].v):null;
       if(!dateObj)return;
-      const status=c[3]&&c[3].v?c[3].v.toString().trim():'';
+      const status=c[4]&&c[4].v?c[4].v.toString().trim():'';
       if(status!=='นำเข้า')return;
 
-      const company  =val(c[2]);
-      const scanInBy =val(c[4]);                       // E: ผู้บันทึกเข้า
-      const shelf    =val(c[5]);                        // F: ชั้นวาง
-      const expObj   =c[6]?parseGDate(c[6].v):null;   // G: วันหมดอายุ
-      const imgPath  =val(c[7]);                        // H: รูปภาพ (path)
-      const imgLink  =val(c[8]).replace(/&amp;/g,'&'); // I: image link (decode &amp;)
-      const reason   =val(c[9]);                        // J: สาเหตุ
+      const company  =val(c[3]);
+      const scanInBy =val(c[5]);                        // F: ผู้บันทึกเข้า
+      const shelf    =val(c[6]);                         // G: ชั้นวาง
+      const expObj   =c[7]?parseGDate(c[7].v):null;    // H: วันหมดอายุ
+      const imgPath  =val(c[8]);                         // I: รูปภาพ (path)
+      const imgLink  =val(c[9]).replace(/&amp;/g,'&');  // J: image link (decode &amp;)
+      const reason   =val(c[10]);                        // K: สาเหตุ
 
-      // เวลาสแกนเข้า: จาก .f ของวันที่ หรือ serial fraction หรือชื่อไฟล์
+      // เวลาสแกนเข้า: จาก column B (c[1]) ก่อน ถ้าไม่มีค่อยดึงจากชื่อไฟล์
       let scanInTime='';
-      const dateFmt=fmtVal(c[0]);
-      const tmFmt=dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-      if(tmFmt){ scanInTime=tmFmt[1]; }
-      else if(dateObj&&(dateObj.getHours()||dateObj.getMinutes()||dateObj.getSeconds())){
-        scanInTime=String(dateObj.getHours()).padStart(2,'0')+':'+
-                   String(dateObj.getMinutes()).padStart(2,'0')+':'+
-                   String(dateObj.getSeconds()).padStart(2,'0');
-      } else {
-        scanInTime=extractTimeFromPath(imgPath);
+      // ลอง B=เวลา ก่อน
+      if(c[1]&&c[1].v!=null){
+        const tStr=fmtVal(c[1])||val(c[1]);
+        const tm0=tStr.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(tm0) scanInTime=tm0[1];
+      }
+      if(!scanInTime){
+        const dateFmt=fmtVal(c[0]);
+        const tmFmt=dateFmt.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if(tmFmt){ scanInTime=tmFmt[1]; }
+        else if(dateObj&&(dateObj.getHours()||dateObj.getMinutes()||dateObj.getSeconds())){
+          scanInTime=String(dateObj.getHours()).padStart(2,'0')+':'+
+                     String(dateObj.getMinutes()).padStart(2,'0')+':'+
+                     String(dateObj.getSeconds()).padStart(2,'0');
+        } else {
+          scanInTime=extractTimeFromPath(imgPath);
+        }
       }
 
       const imgUrl=buildImgUrl(imgLink,imgPath);
@@ -1020,7 +1036,7 @@ function openDetail(idx){
     dl.href=thumb; dl.style.display='flex';
     document.getElementById('divider-drive').style.display='';
   }else{
-    iw.innerHTML='<div class="modal-img-err">📷 ไม่มีรูปภาพสแกนเข้า<br><small style="color:var(--text3)">ตรวจสอบคอลัมน์ L</small></div>';
+    iw.innerHTML='<div class="modal-img-err">📷 ไม่มีรูปภาพสแกนเข้า<br><small style="color:var(--text3)">ตรวจสอบคอลัมน์ I–J ใน Sheet</small></div>';
     document.getElementById('modal-drive-link').style.display='none';
     document.getElementById('divider-drive').style.display='none';
   }
