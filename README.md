@@ -5,4 +5,4 @@ Dashboard สำหรับติดตามพัสดุแบบ Real-time
 
 ## 🌐 เปิดใช้งาน
 
-👉 **[คลิกเพื่อเปิด Dashboard]([https://YOUR-USERNAME.github.io/YOUR-REPO-NAME](https://bufpharoah-commits.github.io/newnoi/))**
+https://YOUR-USERNAME.github.io/YOUR-REPO-NAME](https://bufpharoah-commits.github.io/newnoi
