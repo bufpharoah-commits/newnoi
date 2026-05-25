@@ -254,12 +254,16 @@ tbody tr:hover td{background:#fafaf8}
         <button class="tab-btn" onclick="setPeriod('month',this)">เดือนนี้</button>
       </div>
       <div class="ctrl-divider"></div>
-      <!-- toggle: แสดงเฉพาะที่สแกนออกแล้ว -->
+      <!-- toggle: สแกนออก + เลือกประเภท -->
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;user-select:none">
-        <input type="checkbox" id="show-out-only" onchange="applyFilters()"
+        <input type="checkbox" id="show-out-only" onchange="onOutOnlyChange()"
           style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer">
         📤 สแกนออกแล้ว
       </label>
+      <select id="sendto-filter" onchange="applyFilters()" disabled
+        style="min-width:155px;opacity:0.4;transition:opacity 0.2s;font-size:12px">
+        <option value="">— ประเภทส่งต่อ —</option>
+      </select>
       <div class="ctrl-divider"></div>
       <input type="date" id="date-from" onchange="applyFilters()" title="ตั้งแต่วันที่">
       <span style="font-size:13px;color:var(--text3)">—</span>
@@ -716,6 +720,40 @@ function refreshReasonFilter(){
 
 function onCompanyChange(){refreshReasonFilter();applyFilters()}
 
+function onOutOnlyChange(){
+  const checked=document.getElementById('show-out-only').checked;
+  const sf=document.getElementById('sendto-filter');
+  if(!checked){
+    sf.value='';
+    sf.disabled=true;
+    sf.style.opacity='0.4';
+  } else {
+    sf.disabled=false;
+    sf.style.opacity='1';
+    refreshSendToFilter();
+  }
+  applyFilters();
+}
+
+function refreshSendToFilter(){
+  const sf=document.getElementById('sendto-filter');
+  const prev=sf.value;
+  // เก็บ sendTo ที่มีในข้อมูลจริง (unique, sorted)
+  const vals=[...new Set(allData
+    .map(r=>(r.sendTo||'').trim())
+    .filter(Boolean)
+  )].sort((a,b)=>a.localeCompare(b,'th'));
+  sf.innerHTML='<option value="">— ประเภทส่งต่อ —</option>';
+  const icons={'ส่งสำนักงานใหญ่':'🏢','คืนบริษัท':'↩️','ดำเนินการตามกฏหมาย':'⚖️','ลูกค้าติดต่อรับเอง':'🙋'};
+  vals.forEach(v=>{
+    const o=document.createElement('option');
+    o.value=v;
+    o.textContent=(icons[v]||'📤')+' '+v;
+    sf.appendChild(o);
+  });
+  if(prev&&vals.includes(prev)) sf.value=prev;
+}
+
 function setPeriod(p,el){
   period=p;
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -732,6 +770,7 @@ function applyFilters(){
   const df=document.getElementById('date-from').value;   // "YYYY-MM-DD"
   const dt=document.getElementById('date-to').value;
   const outOnly=document.getElementById('show-out-only')?.checked||false;
+  const sendToFilter=document.getElementById('sendto-filter')?.value||'';
 
   // แปลง date input เป็น local midnight (ไม่ใช้ new Date(str) ที่เป็น UTC)
   function localDate(s){ if(!s)return null; const p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
@@ -745,6 +784,7 @@ function applyFilters(){
 
   filtered=allData.filter(r=>{
     if(outOnly&&!r.sendDate)return false;
+    if(sendToFilter&&(r.sendTo||'').trim()!==sendToFilter)return false;
     if(search&&!r.tracking.toLowerCase().includes(search))return false;
     if(co&&r.company!==co)return false;
     if(re&&r.reason!==re)return false;
@@ -770,6 +810,7 @@ function applyFilters(){
   else if(dt)lbl='ถึง '+dt;
   if(co)lbl+=' · '+co;
   if(re)lbl+=' · '+re;
+  if(sendToFilter)lbl+=' · 📤 '+sendToFilter;
   if(search)lbl+=' · "'+search+'"';
 
   updateStats(lbl);
@@ -786,6 +827,8 @@ function clearFilters(){
   document.getElementById('date-from').value='';
   document.getElementById('date-to').value='';
   const cb=document.getElementById('show-out-only');if(cb)cb.checked=false;
+  const sf=document.getElementById('sendto-filter');
+  if(sf){sf.value='';sf.disabled=true;sf.style.opacity='0.4';}
   period='all';
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.tab-btn').classList.add('active');
