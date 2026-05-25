@@ -178,6 +178,17 @@ tbody tr:hover td{background:#fafaf8}
 .export-dd-item.sendto-item:hover .export-dd-count{background:rgba(26,92,58,0.15)}
 .export-dd-none{padding:10px 14px;font-size:12px;color:var(--text3);font-style:italic}
 
+
+/* SCAN-OUT DATE PANEL */
+.out-date-panel{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;background:rgba(26,92,58,0.06);border:1px solid rgba(26,92,58,0.18);border-radius:var(--radius-sm);margin-top:2px}
+.out-date-panel.visible{display:flex}
+.out-period-tabs{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px;gap:2px}
+.out-tab{padding:3px 10px;border:none;border-radius:3px;background:transparent;color:var(--text2);font-size:11px;font-family:'Sarabun',sans-serif;cursor:pointer;font-weight:500;transition:all 0.15s;white-space:nowrap}
+.out-tab.active{background:var(--accent);color:#fff}
+.out-date-sep{font-size:11px;color:var(--text3)}
+.out-date-input{height:30px!important;font-size:12px!important;padding:0 8px!important;border:1px solid var(--border2);border-radius:4px}
+.out-date-label{font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap}
+
 /* RESPONSIVE */
 @media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.charts-row{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.stats-grid .stat-card:last-child{grid-column:1/-1}}
@@ -264,6 +275,31 @@ tbody tr:hover td{background:#fafaf8}
         style="min-width:155px;opacity:0.4;transition:opacity 0.2s;font-size:12px">
         <option value="">— ประเภทส่งต่อ —</option>
       </select>
+      <!-- Out-date panel (แสดงเมื่อ show-out-only=true) -->
+      <div class="out-date-panel" id="out-date-panel">
+        <span class="out-date-label">📅 วันสแกนออก:</span>
+        <div class="out-period-tabs">
+          <button class="out-tab active" onclick="setOutPeriod('all',this)">ทั้งหมด</button>
+          <button class="out-tab" onclick="setOutPeriod('today',this)">วันนี้</button>
+          <button class="out-tab" onclick="setOutPeriod('yesterday',this)">เมื่อวาน</button>
+          <button class="out-tab" onclick="setOutPeriod('week',this)">สัปดาห์นี้</button>
+          <button class="out-tab" onclick="setOutPeriod('month',this)">เดือนนี้</button>
+          <button class="out-tab" onclick="setOutPeriod('custom',this)">กำหนดเอง</button>
+        </div>
+        <div id="out-custom-range" style="display:none;align-items:center;gap:4px;flex-wrap:wrap">
+          <input type="date" id="out-date-from" class="out-date-input" onchange="applyFilters()" title="สแกนออกตั้งแต่วันที่">
+          <span class="out-date-sep">—</span>
+          <input type="date" id="out-date-to" class="out-date-input" onchange="applyFilters()" title="สแกนออกถึงวันที่">
+          <select id="out-quick-select" class="out-date-input" onchange="applyOutQuickSelect(this.value)" style="min-width:130px;height:30px">
+            <option value="">⚡ ย้อนหลัง...</option>
+            <option value="3">3 วันที่แล้ว</option>
+            <option value="5">5 วันที่แล้ว</option>
+            <option value="7">7 วันที่แล้ว</option>
+            <option value="14">14 วันที่แล้ว</option>
+            <option value="30">30 วันที่แล้ว</option>
+          </select>
+        </div>
+      </div>
       <div class="ctrl-divider"></div>
       <input type="date" id="date-from" onchange="applyFilters()" title="ตั้งแต่วันที่">
       <span style="font-size:13px;color:var(--text3)">—</span>
@@ -426,6 +462,7 @@ const COLORS_RE = ['#ef4444','#f97316','#eab308','#8b5cf6','#06b6d4','#84cc16'];
 let allData=[], filtered=[];
 let page=1; const PER=25;
 let period='all', sortKey='date', sortDir=-1;
+let outPeriod='all'; // สำหรับ filter วันสแกนออก
 let sparkMode='day';
 
 // ============================================================
@@ -723,15 +760,52 @@ function onCompanyChange(){refreshReasonFilter();applyFilters()}
 function onOutOnlyChange(){
   const checked=document.getElementById('show-out-only').checked;
   const sf=document.getElementById('sendto-filter');
+  const panel=document.getElementById('out-date-panel');
   if(!checked){
     sf.value='';
     sf.disabled=true;
     sf.style.opacity='0.4';
+    panel.classList.remove('visible');
+    // reset outPeriod
+    outPeriod='all';
+    document.querySelectorAll('.out-tab').forEach(b=>b.classList.remove('active'));
+    document.querySelector('.out-tab').classList.add('active');
+    document.getElementById('out-custom-range').style.display='none';
+    document.getElementById('out-date-from').value='';
+    document.getElementById('out-date-to').value='';
+    document.getElementById('out-quick-select').value='';
   } else {
     sf.disabled=false;
     sf.style.opacity='1';
+    panel.classList.add('visible');
     refreshSendToFilter();
   }
+  applyFilters();
+}
+
+function setOutPeriod(p, el){
+  outPeriod=p;
+  document.querySelectorAll('.out-tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  const cr=document.getElementById('out-custom-range');
+  if(p==='custom'){
+    cr.style.display='flex';
+  } else {
+    cr.style.display='none';
+    document.getElementById('out-date-from').value='';
+    document.getElementById('out-date-to').value='';
+    document.getElementById('out-quick-select').value='';
+  }
+  applyFilters();
+}
+
+function applyOutQuickSelect(days){
+  if(!days) return;
+  const now=new Date();
+  const to=now.toISOString().slice(0,10);
+  const from=new Date(now-days*86400000).toISOString().slice(0,10);
+  document.getElementById('out-date-from').value=from;
+  document.getElementById('out-date-to').value=to;
   applyFilters();
 }
 
@@ -772,19 +846,43 @@ function applyFilters(){
   const outOnly=document.getElementById('show-out-only')?.checked||false;
   const sendToFilter=document.getElementById('sendto-filter')?.value||'';
 
-  // แปลง date input เป็น local midnight (ไม่ใช้ new Date(str) ที่เป็น UTC)
+  // แปลง date input เป็น local midnight
   function localDate(s){ if(!s)return null; const p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
   const dfrom=localDate(df);
   const dto  =dt?new Date(+localDate(dt).setHours(23,59,59,999)):null;
+  // out-date range
+  const odf=document.getElementById('out-date-from')?.value||'';
+  const odt2=document.getElementById('out-date-to')?.value||'';
+  const odfrom=odf?localDate(odf):null;
+  const odto  =odt2?new Date(+localDate(odt2).setHours(23,59,59,999)):null;
 
   const now=today0();
   const wk=monDay(now);
   const mo=new Date(now.getFullYear(),now.getMonth(),1);
   const tom=new Date(now);tom.setDate(tom.getDate()+1);
 
+  // คำนวณ out-period range
+  const outNow=today0();
+  const outTom=new Date(outNow);outTom.setDate(outTom.getDate()+1);
+  const outYest=new Date(outNow);outYest.setDate(outYest.getDate()-1);
+  const outWk=monDay(outNow);
+  const outMo=new Date(outNow.getFullYear(),outNow.getMonth(),1);
+
   filtered=allData.filter(r=>{
     if(outOnly&&!r.sendDate)return false;
     if(sendToFilter&&(r.sendTo||'').trim()!==sendToFilter)return false;
+    // filter วันสแกนออก
+    if(outOnly&&r.sendDate){
+      const sd=new Date(r.sendDate);sd.setHours(0,0,0,0);
+      if(outPeriod==='today'&&!(sd>=outNow&&sd<outTom))return false;
+      if(outPeriod==='yesterday'&&!(sd>=outYest&&sd<outNow))return false;
+      if(outPeriod==='week'&&sd<outWk)return false;
+      if(outPeriod==='month'&&sd<outMo)return false;
+      if(outPeriod==='custom'){
+        if(odfrom&&sd<odfrom)return false;
+        if(odto&&sd>odto)return false;
+      }
+    }
     if(search&&!r.tracking.toLowerCase().includes(search))return false;
     if(co&&r.company!==co)return false;
     if(re&&r.reason!==re)return false;
@@ -811,6 +909,16 @@ function applyFilters(){
   if(co)lbl+=' · '+co;
   if(re)lbl+=' · '+re;
   if(sendToFilter)lbl+=' · 📤 '+sendToFilter;
+  // label วันสแกนออก
+  if(outOnly){
+    if(outPeriod==='today')lbl+=' · ออกวันนี้';
+    else if(outPeriod==='yesterday')lbl+=' · ออกเมื่อวาน';
+    else if(outPeriod==='week')lbl+=' · ออกสัปดาห์นี้';
+    else if(outPeriod==='month')lbl+=' · ออกเดือนนี้';
+    else if(outPeriod==='custom'&&(odf||odt2)){
+      lbl+=' · ออก '+(odf||'...')+' – '+(odt2||'...');
+    }
+  }
   if(search)lbl+=' · "'+search+'"';
 
   updateStats(lbl);
@@ -829,6 +937,18 @@ function clearFilters(){
   const cb=document.getElementById('show-out-only');if(cb)cb.checked=false;
   const sf=document.getElementById('sendto-filter');
   if(sf){sf.value='';sf.disabled=true;sf.style.opacity='0.4';}
+  // reset out-date panel
+  outPeriod='all';
+  const panel=document.getElementById('out-date-panel');
+  if(panel) panel.classList.remove('visible');
+  document.querySelectorAll('.out-tab').forEach(b=>b.classList.remove('active'));
+  const firstOutTab=document.querySelector('.out-tab');
+  if(firstOutTab) firstOutTab.classList.add('active');
+  const cr=document.getElementById('out-custom-range');
+  if(cr) cr.style.display='none';
+  const odf=document.getElementById('out-date-from');if(odf) odf.value='';
+  const odt=document.getElementById('out-date-to');if(odt) odt.value='';
+  const oqs=document.getElementById('out-quick-select');if(oqs) oqs.value='';
   period='all';
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelector('.tab-btn').classList.add('active');
