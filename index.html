@@ -161,6 +161,23 @@ tbody tr:hover td{background:#fafaf8}
 /* FOOTER */
 .footer{margin-top:2rem;padding:1rem 1.5rem;text-align:center;font-size:11px;color:var(--text3);border-top:1px solid var(--border)}
 
+
+/* EXPORT DROPDOWN */
+.export-menu-btn{position:relative}
+.export-dropdown{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:260px;z-index:300;overflow:hidden;animation:slideUp 0.15s ease}
+.export-dropdown.open{display:block}
+.export-dd-header{padding:7px 14px 5px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;background:var(--bg);border-bottom:1px solid var(--border)}
+.export-dd-item{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:13px;font-weight:500;color:var(--text);cursor:pointer;transition:background 0.12s;border-bottom:1px solid var(--border)}
+.export-dd-item:last-child{border-bottom:none}
+.export-dd-item:hover{background:var(--accent-light)}
+.export-dd-icon{font-size:15px;width:22px;text-align:center;flex-shrink:0}
+.export-dd-label{flex:1}
+.export-dd-count{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--surface2);color:var(--text3);min-width:28px;text-align:center}
+.export-dd-item.all-item .export-dd-count{background:rgba(26,92,58,0.12);color:var(--accent)}
+.export-dd-item.sendto-item .export-dd-count{background:rgba(59,130,246,0.1);color:#1d4ed8}
+.export-dd-item.sendto-item:hover .export-dd-count{background:rgba(26,92,58,0.15)}
+.export-dd-none{padding:10px 14px;font-size:12px;color:var(--text3);font-style:italic}
+
 /* RESPONSIVE */
 @media(max-width:1100px){.charts-row{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.charts-row{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.stats-grid .stat-card:last-child{grid-column:1/-1}}
@@ -299,7 +316,23 @@ tbody tr:hover td{background:#fafaf8}
       <div class="table-title">รายการพัสดุ</div>
       <div style="display:flex;align-items:center;gap:8px">
         <span class="table-count" id="tbl-count">— รายการ</span>
-        <button class="btn" onclick="exportCSV()" style="height:30px;font-size:12px;padding:0 10px">⬇ CSV</button>
+        <div class="export-menu-btn" id="export-menu-btn">
+          <button class="btn" onclick="toggleExportMenu(event)" style="height:30px;font-size:12px;padding:0 10px;display:flex;align-items:center;gap:4px">
+            ⬇ CSV <span style="font-size:9px;opacity:0.6">▼</span>
+          </button>
+          <div class="export-dropdown" id="export-dropdown">
+            <div class="export-dd-header">ดาวน์โหลด CSV</div>
+            <div class="export-dd-item all-item" onclick="exportCSVAll()">
+              <span class="export-dd-icon">📋</span>
+              <span class="export-dd-label">ทั้งหมด (ตาม filter)</span>
+              <span class="export-dd-count" id="exp-count-all">—</span>
+            </div>
+            <div class="export-dd-header">แยกตามรายละเอียดสแกนออก</div>
+            <div id="export-sendto-list">
+              <div class="export-dd-none">กำลังโหลด...</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="table-wrap">
@@ -744,6 +777,7 @@ function applyFilters(){
   page=1;
   renderTable();
   renderCharts();
+  if(typeof refreshExportMenu==='function') refreshExportMenu();
 }
 
 function clearFilters(){
@@ -1149,10 +1183,14 @@ function closeModal(){document.getElementById('modal').classList.remove('open')}
 // ============================================================
 // EXPORT CSV
 // ============================================================
-function exportCSV(){
-  if(!filtered.length){showToast('ไม่มีข้อมูล');return}
-  const hdr=['วันที่สแกนเข้า','เวลาสแกนเข้า','เลขพัสดุ','บริษัท','ชั้นวาง','วันหมดอายุ','สาเหตุปัญหา','รายละเอียด','ส่งต่อ','วันที่ส่ง','เวลาส่ง','ผู้บันทึกออก'];
-  const rows=filtered.map(r=>[
+
+// ค่า sendTo จริงจาก sheet แสกนออก (อัปเดตจาก Google Sheets)
+const SENDTO_ICONS={'ส่งสำนักงานใหญ่':'🏢','คืนบริษัท':'↩️','ดำเนินการตามกฏหมาย':'⚖️','ลูกค้าติดต่อรับเอง':'🙋'};
+
+function buildCSV(rows){
+  const hdr=['วันที่สแกนเข้า','เวลาสแกนเข้า','เลขพัสดุ','บริษัท','ชั้นวาง','วันหมดอายุ',
+             'สาเหตุปัญหา','รายละเอียด','ส่งต่อ','วันที่ส่ง','เวลาส่ง','ผู้บันทึกออก'];
+  const dataRows=rows.map(r=>[
     r.dateObj?r.dateObj.toLocaleDateString('th-TH'):'',
     r.scanInTime||'',
     r.tracking,
@@ -1166,12 +1204,82 @@ function exportCSV(){
     r.scanOutTime||'',
     r.scanOutBy||'',
   ]);
-  const csv='\uFEFF'+[hdr,...rows].map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  return '\uFEFF'+[hdr,...dataRows]
+    .map(r=>r.map(c=>`"${(c||'').replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+}
+
+function downloadCSV(csv, filename){
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='parcels_'+new Date().toLocaleDateString('th-TH').replace(/\//g,'-')+'.csv';
+  a.download=filename;
   a.click();
-  showToast('✅ ส่งออก '+filtered.length.toLocaleString()+' รายการ ('+hdr.length+' คอลัมน์)');
+}
+
+// ─── ดาวน์โหลดทั้งหมดตาม filter ───
+function exportCSVAll(){
+  document.getElementById('export-dropdown').classList.remove('open');
+  if(!filtered.length){showToast('⚠️ ไม่มีข้อมูล');return}
+  const date=new Date().toLocaleDateString('th-TH').replace(/\//g,'-');
+  downloadCSV(buildCSV(filtered),'พัสดุทั้งหมด_'+date+'.csv');
+  showToast('✅ ส่งออก '+filtered.length.toLocaleString()+' รายการ');
+}
+
+// ─── ดาวน์โหลดแยกตาม sendTo ───
+function exportCSVBySendTo(sendTo){
+  document.getElementById('export-dropdown').classList.remove('open');
+  const rows=filtered.filter(r=>(r.sendTo||'').trim()===sendTo.trim());
+  if(!rows.length){showToast('⚠️ ไม่มีข้อมูลสำหรับ: '+sendTo);return}
+  const date=new Date().toLocaleDateString('th-TH').replace(/\//g,'-');
+  const safeName=sendTo.replace(/[/\\?%*:|"<>]/g,'-');
+  downloadCSV(buildCSV(rows),'พัสดุ_'+safeName+'_'+date+'.csv');
+  showToast('✅ '+sendTo+' · '+rows.length.toLocaleString()+' รายการ');
+}
+
+// ─── legacy alias ───
+function exportCSV(){ exportCSVAll(); }
+
+// ─── toggle dropdown ───
+function toggleExportMenu(e){
+  e.stopPropagation();
+  const dd=document.getElementById('export-dropdown');
+  dd.classList.toggle('open');
+  if(dd.classList.contains('open')) refreshExportMenu();
+}
+document.addEventListener('click',()=>{
+  document.getElementById('export-dropdown')?.classList.remove('open');
+});
+
+// ─── สร้าง sendTo list จากข้อมูลจริงใน allData ───
+function refreshExportMenu(){
+  // นับ sendTo จาก filtered (เฉพาะที่สแกนออกแล้ว = มี sendDate หรือ sendTo)
+  const countMap={};
+  filtered.forEach(r=>{
+    const key=(r.sendTo||'').trim();
+    if(key) countMap[key]=(countMap[key]||0)+1;
+  });
+
+  // อัปเดต count "ทั้งหมด"
+  const countAllEl=document.getElementById('exp-count-all');
+  if(countAllEl) countAllEl.textContent=filtered.length.toLocaleString();
+
+  const list=document.getElementById('export-sendto-list');
+  const entries=Object.entries(countMap).sort((a,b)=>b[1]-a[1]);
+
+  if(!entries.length){
+    list.innerHTML='<div class="export-dd-none">📭 ยังไม่มีพัสดุที่สแกนออก</div>';
+    return;
+  }
+
+  list.innerHTML=entries.map(([name,count])=>{
+    const icon=SENDTO_ICONS[name]||'📤';
+    const safe=name.replace(/'/g,"\\'");
+    return `<div class="export-dd-item sendto-item" onclick="exportCSVBySendTo('${safe}')">
+      <span class="export-dd-icon">${icon}</span>
+      <span class="export-dd-label">${name}</span>
+      <span class="export-dd-count">${count.toLocaleString()}</span>
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
